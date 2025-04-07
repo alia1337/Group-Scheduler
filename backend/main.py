@@ -308,3 +308,4 @@ def google_callback(request: Request):
         print("❌ Google sync error:", str(e))
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Google sync failed")
+s
