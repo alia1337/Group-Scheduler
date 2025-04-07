@@ -1,0 +1,85 @@
+/* src/google-style-agenda.css */
+
+.google-calendar-layout {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #f9fafb;
+  min-height: 100vh;
+}
+
+.calendar-sidebar {
+  flex-shrink: 0;
+  background-color: white;
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.schedule-panel {
+  flex: 1;
+  background-color: white;
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.google-event-row {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.google-event-date {
+  width: 70px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.google-event-date .day {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.google-event-date .weekday,
+.google-event-date .month {
+  font-size: 0.75rem;
+}
+
+.google-event-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  margin-left: 1rem;
+}
+
+.event-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.event-title {
+  color: #111827;
+  font-weight: 500;
+}
+
+/* Small dot inside react-calendar */
+.dot-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.mini-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin: 1px;
+}

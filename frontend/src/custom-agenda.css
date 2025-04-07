@@ -1,0 +1,31 @@
+/* google-style-agenda.css */
+
+/* Remove default list styling for the schedule list */
+.schedule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Small colored dot for each event (color is set via inline style) */
+.event-dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;  /* fully rounded circle */
+  margin-top: 0.25rem;
+  margin-right: 0.5rem;
+}
+
+/* Date header styling (e.g., "Tue, Apr 5") */
+.schedule-date {
+  font-weight: 600;
+  color: #1F2937;  /* Tailwind gray-800 */
+  margin-bottom: 0.25rem;
+}
+
+/* Subtle "no events" message styling */
+.no-events {
+  color: #6B7280;  /* Tailwind gray-500 */
+  padding: 0.5rem 0;
+}
