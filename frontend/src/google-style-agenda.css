@@ -83,3 +83,15 @@
   border-radius: 50%;
   margin: 1px;
 }
+
+/* Minimal calendar styling - preserve original look */
+/* Only add selected day highlighting */
+.react-calendar__tile--selected {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+/* Ensure text is visible on selected days */
+.react-calendar__tile--selected abbr {
+  color: white !important;
+}

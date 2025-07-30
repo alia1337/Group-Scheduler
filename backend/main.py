@@ -75,6 +75,8 @@ class TokenData(BaseModel):
 class EventIn(BaseModel):
     title: str
     start: datetime
+    end_time: datetime | None = None
+    location: str | None = None
     color: str
     user_id: int
     friend_emails: list[str] = []
@@ -83,6 +85,8 @@ class EventOut(BaseModel):
     id: int
     title: str
     start: datetime
+    end_time: datetime | None = None
+    location: str | None = None
     color: str
     group_id: int | None = None
 
@@ -276,8 +280,10 @@ def create_event(event: EventIn):
                 user_ids.append(friend["id"])
 
         for uid in set(user_ids):
-            cursor.execute("INSERT INTO events (title, start, color, user_id) VALUES (%s, %s, %s, %s)",
-                           (event.title, event.start, event.color, uid))
+            cursor.execute("""
+                INSERT INTO events (title, start, end_time, location, color, user_id) 
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (event.title, event.start, event.end_time, event.location, event.color, uid))
         db.commit()
 
         cursor.execute("SELECT * FROM events WHERE user_id = %s ORDER BY id DESC LIMIT 1", (event.user_id,))
@@ -397,11 +403,19 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
         
         service = build('calendar', 'v3', credentials=credentials)
         
-        now = datetime.utcnow().isoformat() + 'Z'
+        # Fetch events from start of current year to end of next year
+        # This ensures we get past and future events
+        current_year = datetime.now().year
+        start_of_year = datetime(current_year, 1, 1).isoformat() + 'Z'
+        end_of_next_year = datetime(current_year + 1, 12, 31, 23, 59, 59).isoformat() + 'Z'
+        
+        print(f"Fetching Google Calendar events from {start_of_year} to {end_of_next_year}")
+        
         events_result = service.events().list(
             calendarId='primary',
-            timeMin=now,
-            maxResults=50,
+            timeMin=start_of_year,
+            timeMax=end_of_next_year,
+            maxResults=100,
             singleEvents=True,
             orderBy='startTime'
         ).execute()
@@ -409,15 +423,21 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
         events = events_result.get('items', [])
         
         formatted_events = []
+        print(f"Found {len(events)} Google Calendar events")
+        
         for event in events:
             start = event['start'].get('dateTime', event['start'].get('date'))
+            event_title = event.get('summary', 'No Title')
+            print(f"Google event: {event_title} on {start}")
+            
             formatted_events.append({
                 'id': event.get('id'),
-                'title': event.get('summary', 'No Title'),
+                'title': event_title,
                 'start': start,
                 'source': 'google'
             })
         
+        print(f"Returning {len(formatted_events)} formatted Google Calendar events")
         return formatted_events
         
     except Exception as e:
