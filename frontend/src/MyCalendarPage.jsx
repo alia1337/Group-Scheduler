@@ -48,9 +48,25 @@ const MyCalendarPage = () => {
     fetch("http://127.0.0.1:8000/events", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.json())
-      .then((data) => setEvents(data))
-      .catch((err) => console.error("Failed to fetch events", err));
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Ensure data is an array before setting
+        if (Array.isArray(data)) {
+          setEvents(data);
+        } else {
+          console.error("Events API returned non-array data:", data);
+          setEvents([]);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch events", err);
+        setEvents([]);
+      });
 
     fetch("http://127.0.0.1:8000/groups", {
       headers: { Authorization: `Bearer ${token}` },
@@ -60,7 +76,11 @@ const MyCalendarPage = () => {
         setGroups(Array.isArray(data) ? data : []);
         setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
       })
-      .catch((err) => console.error("Failed to fetch groups", err));
+      .catch((err) => {
+        console.error("Failed to fetch groups", err);
+        setGroups([]);
+        setVisibleGroups([]);
+      });
 
     // Check if Google Calendar is connected and fetch events
     fetch("http://127.0.0.1:8000/me", {

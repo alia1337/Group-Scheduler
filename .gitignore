@@ -92,3 +92,7 @@ backend/.pytest_cache/
 frontend/build/
 frontend/.env
 frontend/node_modules/
+
+# Docker volumes
+mysql_data/
+postgres_data/
