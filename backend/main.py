@@ -5,10 +5,12 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import mysql.connector
+from mysql.connector import errors as mysql_errors
 import bcrypt
 import os
 import jwt
 import traceback
+import time
 from dotenv import load_dotenv
 
 from google_auth_oauthlib.flow import Flow
@@ -36,14 +38,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-db = mysql.connector.connect(
-    host=os.getenv("DB_HOST"),
-    port=os.getenv("DB_PORT"),
-    user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    database=os.getenv("DB_NAME")
-)
-cursor = db.cursor(dictionary=True)
+def get_db_connection(retries=3, delay=1):
+    for attempt in range(retries):
+        try:
+            return mysql.connector.connect(
+                host=os.getenv("DB_HOST"),
+                port=os.getenv("DB_PORT"),
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASSWORD"),
+                database=os.getenv("DB_NAME"),
+                autocommit=False,
+                pool_reset_session=True,
+                connection_timeout=10
+            )
+        except (mysql_errors.OperationalError, mysql_errors.InterfaceError) as e:
+            if attempt < retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise HTTPException(status_code=503, detail="Database connection failed")
 
 # Models
 class RegisterData(BaseModel):
@@ -74,7 +87,7 @@ class EventOut(BaseModel):
     group_id: int | None = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class FriendIn(BaseModel):
     email: str
@@ -111,104 +124,175 @@ def test():
 
 @app.post("/register")
 def register(data: RegisterData):
-    cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
-    if cursor.fetchone():
-        raise HTTPException(status_code=400, detail="Email already registered")
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
-    cursor.execute("INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
-                   (data.username, data.email, hashed_pw))
-    db.commit()
-    return {"message": "User registered successfully!"}
+        hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+        cursor.execute("INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
+                       (data.username, data.email, hashed_pw))
+        db.commit()
+        return {"message": "User registered successfully!"}
+    finally:
+        cursor.close()
+        db.close()
 
 @app.post("/login", response_model=TokenData)
 def login(data: LoginData):
-    cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
-    user = cursor.fetchone()
-    if not user or not bcrypt.checkpw(data.password.encode(), user["password"].encode()):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
+        user = cursor.fetchone()
+        if not user or not bcrypt.checkpw(data.password.encode(), user["password"].encode()):
+            raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    token = create_access_token({"user_id": user["id"], "email": user["email"]})
-    return {"access_token": token, "token_type": "bearer"}
+        token = create_access_token({"user_id": user["id"], "email": user["email"]})
+        return {"access_token": token, "token_type": "bearer"}
+    finally:
+        cursor.close()
+        db.close()
 
 @app.get("/me")
 def me(user_id: int = Depends(get_current_user)):
-    cursor.execute("SELECT id, username, email FROM users WHERE id = %s", (user_id,))
-    return cursor.fetchone()
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, username, email, google_calendar_connected FROM users WHERE id = %s", (user_id,))
+        user_data = cursor.fetchone()
+        if user_data:
+            # Convert boolean to Python boolean (MySQL returns 0/1)
+            user_data['google_calendar_connected'] = bool(user_data['google_calendar_connected'])
+        return user_data
+    finally:
+        cursor.close()
+        db.close()
 
 @app.post("/friends")
 def add_friend(data: FriendIn, user_id: int = Depends(get_current_user)):
-    cursor.execute("SELECT id FROM users WHERE email = %s", (data.email,))
-    friend = cursor.fetchone()
-    if not friend:
-        raise HTTPException(status_code=404, detail="No user with that email")
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id FROM users WHERE email = %s", (data.email,))
+        friend = cursor.fetchone()
+        if not friend:
+            raise HTTPException(status_code=404, detail="No user with that email")
 
-    cursor.execute("SELECT * FROM friends WHERE user_id = %s AND friend_id = %s", (user_id, friend["id"]))
-    if cursor.fetchone():
-        return {"message": "Already added as friend."}
+        cursor.execute("SELECT * FROM friends WHERE user_id = %s AND friend_id = %s", (user_id, friend["id"]))
+        if cursor.fetchone():
+            return {"message": "Already added as friend."}
 
-    cursor.execute("INSERT INTO friends (user_id, friend_id) VALUES (%s, %s)", (user_id, friend["id"]))
-    db.commit()
-    return {"message": "Friend added."}
+        cursor.execute("INSERT INTO friends (user_id, friend_id) VALUES (%s, %s)", (user_id, friend["id"]))
+        db.commit()
+        return {"message": "Friend added."}
+    finally:
+        cursor.close()
+        db.close()
 
 @app.get("/friends")
 def list_friends(user_id: int = Depends(get_current_user)):
-    cursor.execute("""
-        SELECT u.id, u.username, u.email
-        FROM friends f
-        JOIN users u ON f.friend_id = u.id
-        WHERE f.user_id = %s
-    """, (user_id,))
-    return cursor.fetchall()
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.id, u.username, u.email
+            FROM friends f
+            JOIN users u ON f.friend_id = u.id
+            WHERE f.user_id = %s
+        """, (user_id,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        db.close()
 
 @app.post("/groups")
 def create_group(data: GroupCreate, user_id: int = Depends(get_current_user)):
-    cursor.execute("INSERT INTO group_list (name, creator_id) VALUES (%s, %s)", (data.name, user_id))
-    db.commit()
-    cursor.execute("SELECT LAST_INSERT_ID() AS id")
-    group_id = cursor.fetchone()["id"]
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("INSERT INTO group_list (name, creator_id) VALUES (%s, %s)", (data.name, user_id))
+        db.commit()
+        cursor.execute("SELECT LAST_INSERT_ID() AS id")
+        group_id = cursor.fetchone()["id"]
 
-    cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user_id))
+        cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user_id))
 
-    for email in data.member_emails:
-        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-        user = cursor.fetchone()
-        if user:
-            cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user["id"]))
+        for email in data.member_emails:
+            cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+            user = cursor.fetchone()
+            if user:
+                cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user["id"]))
 
-    db.commit()
-    return {"message": "Group created successfully", "group_id": group_id}
+        db.commit()
+        return {"message": "Group created successfully", "group_id": group_id}
+    finally:
+        cursor.close()
+        db.close()
+
+@app.get("/groups")
+def get_user_groups(user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT gl.id AS group_id, gl.name AS group_name
+            FROM group_members gm
+            JOIN group_list gl ON gm.group_id = gl.id
+            WHERE gm.user_id = %s
+        """, (user_id,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        db.close()
 
 @app.get("/events", response_model=list[EventOut])
 def get_events(user_id: int = Depends(get_current_user)):
-    today = datetime.utcnow()
-    end = datetime(today.year, 12, 31)
-    cursor.execute("SELECT * FROM events WHERE user_id = %s AND start BETWEEN %s AND %s",
-                   (user_id, today, end))
-    return cursor.fetchall()
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        today = datetime.utcnow()
+        end = datetime(today.year, 12, 31)
+        cursor.execute("SELECT * FROM events WHERE user_id = %s AND start BETWEEN %s AND %s",
+                       (user_id, today, end))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        db.close()
 
 @app.post("/events", response_model=EventOut)
 def create_event(event: EventIn):
-    user_ids = [event.user_id]
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        user_ids = [event.user_id]
 
-    for email in event.friend_emails:
-        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-        friend = cursor.fetchone()
-        if friend:
-            user_ids.append(friend["id"])
+        for email in event.friend_emails:
+            cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+            friend = cursor.fetchone()
+            if friend:
+                user_ids.append(friend["id"])
 
-    for uid in set(user_ids):
-        cursor.execute("INSERT INTO events (title, start, color, user_id) VALUES (%s, %s, %s, %s)",
-                       (event.title, event.start, event.color, uid))
-    db.commit()
+        for uid in set(user_ids):
+            cursor.execute("INSERT INTO events (title, start, color, user_id) VALUES (%s, %s, %s, %s)",
+                           (event.title, event.start, event.color, uid))
+        db.commit()
 
-    cursor.execute("SELECT * FROM events WHERE user_id = %s ORDER BY id DESC LIMIT 1", (event.user_id,))
-    return cursor.fetchone()
+        cursor.execute("SELECT * FROM events WHERE user_id = %s ORDER BY id DESC LIMIT 1", (event.user_id,))
+        return cursor.fetchone()
+    finally:
+        cursor.close()
+        db.close()
 
 @app.get("/auth/google/login")
 def google_login(user_id: int = Depends(get_current_user)):
-    temp_token = create_access_token({"user_id": user_id}, timedelta(minutes=10))
-
+    print(f"Google OAuth login request for user_id: {user_id}")
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        print("ERROR: Google OAuth not configured")
+        raise HTTPException(status_code=500, detail="Google OAuth not configured")
+    
     flow = Flow.from_client_config(
         {
             "web": {
@@ -216,26 +300,35 @@ def google_login(user_id: int = Depends(get_current_user)):
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI]
             }
         },
-        scopes=["https://www.googleapis.com/auth/calendar.readonly", "openid", "email"],
-        redirect_uri=GOOGLE_REDIRECT_URI,
+        scopes=[
+            'https://www.googleapis.com/auth/calendar.readonly',
+            'https://www.googleapis.com/auth/calendar.events'
+        ]
     )
-
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="select_account",
-        state=temp_token
-    )
-    return {"auth_url": auth_url}
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    
+    try:
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            state=str(user_id)
+        )
+        print(f"Generated auth URL for user {user_id}: {authorization_url[:100]}...")
+        return {"auth_url": authorization_url}
+    except Exception as e:
+        print(f"ERROR generating auth URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate auth URL: {str(e)}")
 
 @app.get("/auth/google/callback")
-def google_callback(request: Request):
+def google_callback(code: str, state: str):
+    print(f"Google OAuth callback received - code: {code[:20] if code else 'None'}..., state: {state}")
     try:
-        code = request.query_params.get("code")
-        token = request.query_params.get("state")
-        user_id = decode_token(token).get("user_id")
-
+        user_id = int(state)
+        print(f"Processing callback for user_id: {user_id}")
+        
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -243,68 +336,112 @@ def google_callback(request: Request):
                     "client_secret": GOOGLE_CLIENT_SECRET,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [GOOGLE_REDIRECT_URI]
                 }
             },
-            scopes=["https://www.googleapis.com/auth/calendar.readonly", "openid", "email"],
-            redirect_uri=GOOGLE_REDIRECT_URI,
+            scopes=[
+                'https://www.googleapis.com/auth/calendar.readonly',
+                'https://www.googleapis.com/auth/calendar.events'
+            ]
         )
+        flow.redirect_uri = GOOGLE_REDIRECT_URI
+        
         flow.fetch_token(code=code)
-
-        id_info = id_token.verify_oauth2_token(
-            flow.credentials.id_token,
-            google_requests.Request(),
-            GOOGLE_CLIENT_ID,
-        )
-        print("✅ Google user email:", id_info.get("email"))
-
-        service = build("calendar", "v3", credentials=flow.credentials)
-
-        now = datetime.utcnow().isoformat() + "Z"
-        end = datetime(datetime.utcnow().year, 12, 31).isoformat() + "Z"
-
-        events_result = service.events().list(
-            calendarId="primary",
-            timeMin=now,
-            timeMax=end,
-            singleEvents=True,
-            orderBy="startTime"
-        ).execute()
-
-        insert_cursor = db.cursor(dictionary=True)
-        for event in events_result.get("items", []):
-            title = event.get("summary", "Untitled")
-            start_raw = event["start"].get("dateTime") or event["start"].get("date")
-            if not start_raw:
-                continue
-
-            try:
-                start = datetime.fromisoformat(start_raw.replace("Z", "+00:00")).replace(tzinfo=None)
-            except Exception as parse_err:
-                print("❌ Date parsing failed:", parse_err)
-                continue
-
-            insert_cursor.execute(
-                "SELECT * FROM events WHERE user_id = %s AND title = %s AND start = %s AND source = 'google'",
-                (user_id, title, start)
-            )
-            if insert_cursor.fetchone():
-                continue
-
-            insert_cursor.execute(
-                "INSERT INTO events (title, start, color, user_id, source) VALUES (%s, %s, %s, %s, %s)",
-                (title, start, "#34a853", user_id, "google")
-            )
-
-        db.commit()
-        insert_cursor.close()
-        return RedirectResponse(url="http://localhost:3000/calendar")
-
-    except jwt.PyJWTError as jwt_err:
-        print("❌ Invalid JWT token:", jwt_err)
-        traceback.print_exc()
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
+        
+        credentials = flow.credentials
+        
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                UPDATE users SET 
+                google_access_token = %s,
+                google_refresh_token = %s,
+                google_calendar_connected = TRUE
+                WHERE id = %s
+            """, (credentials.token, credentials.refresh_token, user_id))
+            db.commit()
+        finally:
+            cursor.close()
+            db.close()
+        
+        print(f"Successfully stored Google OAuth tokens for user {user_id}")
+        return RedirectResponse(url="http://localhost:3000/calendar?connected=true")
+        
     except Exception as e:
-        print("❌ Google sync error:", str(e))
+        print(f"Google OAuth callback error: {e}")
+        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Google sync failed")
+        return RedirectResponse(url="http://localhost:3000/calendar?error=auth_failed")
+
+@app.get("/auth/google/events")
+def get_google_calendar_events(user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT google_access_token, google_refresh_token FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        if not user or not user.get('google_access_token'):
+            raise HTTPException(status_code=404, detail="Google Calendar not connected")
+        
+        from google.oauth2.credentials import Credentials
+        
+        credentials = Credentials(
+            token=user['google_access_token'],
+            refresh_token=user['google_refresh_token'],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET
+        )
+        
+        service = build('calendar', 'v3', credentials=credentials)
+        
+        now = datetime.utcnow().isoformat() + 'Z'
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=now,
+            maxResults=50,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        formatted_events = []
+        for event in events:
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            formatted_events.append({
+                'id': event.get('id'),
+                'title': event.get('summary', 'No Title'),
+                'start': start,
+                'source': 'google'
+            })
+        
+        return formatted_events
+        
+    except Exception as e:
+        print(f"Error fetching Google Calendar events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch Google Calendar events")
+    finally:
+        cursor.close()
+        db.close()
+
+@app.post("/auth/google/disconnect")
+def disconnect_google_calendar(user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            UPDATE users SET 
+            google_access_token = NULL,
+            google_refresh_token = NULL,
+            google_calendar_connected = FALSE
+            WHERE id = %s
+        """, (user_id,))
+        db.commit()
+        print(f"Disconnected Google Calendar for user {user_id}")
+        return {"message": "Google Calendar disconnected successfully"}
+    finally:
+        cursor.close()
+        db.close()

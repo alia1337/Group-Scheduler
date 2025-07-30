@@ -27,6 +27,8 @@ const MyCalendarPage = () => {
   const [showMyEvents, setShowMyEvents] = useState(true);
   const [groups, setGroups] = useState([]);
   const [visibleGroups, setVisibleGroups] = useState([]);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+  const [googleEvents, setGoogleEvents] = useState([]);
 
   const navigate = useNavigate();
 
@@ -52,6 +54,72 @@ const MyCalendarPage = () => {
         setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
       })
       .catch((err) => console.error("Failed to fetch groups", err));
+
+    // Check if Google Calendar is connected and fetch events
+    fetch("http://127.0.0.1:8000/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((userData) => {
+        console.log("User data from /me endpoint:", userData);
+        console.log("Google Calendar connected status:", userData.google_calendar_connected);
+        
+        if (userData.google_calendar_connected) {
+          console.log("Google Calendar is connected, setting state and fetching events");
+          setIsGoogleConnected(true);
+          // Fetch Google Calendar events
+          fetch("http://127.0.0.1:8000/auth/google/events", {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then((res) => res.json())
+            .then((googleData) => {
+              console.log("Google Calendar events:", googleData);
+              setGoogleEvents(Array.isArray(googleData) ? googleData : []);
+            })
+            .catch((err) => console.error("Failed to fetch Google events", err));
+        } else {
+          console.log("Google Calendar is not connected");
+        }
+      })
+      .catch((err) => console.error("Failed to fetch user data", err));
+  }, []);
+
+  // Handle Google OAuth callback
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('connected') === 'true') {
+      console.log("OAuth callback: connection successful");
+      setIsGoogleConnected(true);
+      // Fetch user data again to get updated connection status
+      const token = localStorage.getItem("token");
+      if (token) {
+        fetch("http://127.0.0.1:8000/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((res) => res.json())
+          .then((userData) => {
+            console.log("Updated user data after OAuth:", userData);
+            if (userData.google_calendar_connected) {
+              setIsGoogleConnected(true);
+              // Fetch Google events
+              fetch("http://127.0.0.1:8000/auth/google/events", {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+                .then((res) => res.json())
+                .then((googleData) => {
+                  setGoogleEvents(Array.isArray(googleData) ? googleData : []);
+                })
+                .catch((err) => console.error("Failed to fetch Google events", err));
+            }
+          });
+      }
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlParams.get('error') === 'auth_failed') {
+      alert('Google Calendar connection failed. Please try again.');
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const handleLogout = () => {
@@ -138,7 +206,24 @@ const MyCalendarPage = () => {
     return isWithinInterval(eventDate, { start: today, end });
   });
 
-  const filteredEvents = eventsThisYear.filter((event) => {
+  // Combine local events with Google Calendar events
+  const allEvents = [...eventsThisYear];
+  if (isGoogleConnected) {
+    const googleEventsFiltered = googleEvents.filter((event) => {
+      const eventDate = new Date(event.start);
+      return isWithinInterval(eventDate, { start: today, end });
+    }).map(event => ({
+      ...event,
+      color: '#4285f4', // Google blue color
+      source: 'google'
+    }));
+    allEvents.push(...googleEventsFiltered);
+  }
+
+  const filteredEvents = allEvents.filter((event) => {
+    // Always show Google Calendar events if connected
+    if (event.source === 'google') return true;
+    
     if (!showMyEvents && event.group_id === null) return false;
     if (event.group_id && !visibleGroups.includes(event.group_id)) return false;
     return true;
@@ -167,12 +252,12 @@ const MyCalendarPage = () => {
           <Link to="/" className="hover:underline font-medium">
             Home
           </Link>
-          <a href="#" className="hover:underline font-medium">
+          <Link to="/new-group" className="hover:underline font-medium">
             New Group
-          </a>
-          <a href="#" className="hover:underline font-medium">
+          </Link>
+          <Link to="/new-event" className="hover:underline font-medium">
             New Event
-          </a>
+          </Link>
           {username && <span className="text-gray-600">Welcome {username}</span>}
           <button onClick={handleLogout} className="ml-4 text-red-600 hover:underline">
             Logout
@@ -238,12 +323,44 @@ const MyCalendarPage = () => {
 
         <div className="md:col-span-2 bg-white shadow rounded-lg p-4">
           <div className="flex justify-end mb-4 gap-2">
-            <button
-              onClick={handleConnectGoogle}
-              className="bg-green-600 text-white px-3 py-1 rounded"
-            >
-              Connect Google Calendar
-            </button>
+            {isGoogleConnected ? (
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 text-sm">✓ Google Calendar Connected</span>
+                <button
+                  onClick={async () => {
+                    const token = localStorage.getItem("token");
+                    if (!token) return;
+                    
+                    try {
+                      const res = await fetch("http://127.0.0.1:8000/auth/google/disconnect", {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      
+                      if (res.ok) {
+                        setIsGoogleConnected(false);
+                        setGoogleEvents([]);
+                        console.log("Google Calendar disconnected successfully");
+                      } else {
+                        console.error("Failed to disconnect Google Calendar");
+                      }
+                    } catch (error) {
+                      console.error("Error disconnecting Google Calendar:", error);
+                    }
+                  }}
+                  className="bg-red-600 text-white px-3 py-1 rounded text-sm"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleConnectGoogle}
+                className="bg-green-600 text-white px-3 py-1 rounded"
+              >
+                Connect Google Calendar
+              </button>
+            )}
           </div>
 
           {Object.keys(groupedEvents).length === 0 ? (
@@ -263,8 +380,13 @@ const MyCalendarPage = () => {
                         style={{ backgroundColor: event.color }}
                       ></span>
                       <div className="content">
-                        <div className="title font-medium text-gray-900">
+                        <div className="title font-medium text-gray-900 flex items-center gap-2">
                           {event.title}
+                          {event.source === 'google' && (
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              Google
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-500">
                           {format(new Date(event.start), "h:mm a")}
