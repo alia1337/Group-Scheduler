@@ -495,6 +495,39 @@ def update_group_name(group_id: int, data: GroupNameUpdate, user_id: int = Depen
         cursor.close()
         db.close()
 
+@app.delete("/groups/{group_id}")
+def delete_group(group_id: int, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if user is the creator of the group (not just admin)
+        cursor.execute("""
+            SELECT creator_id FROM group_list WHERE id = %s
+        """, (group_id,))
+        
+        group = cursor.fetchone()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        if group["creator_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Only the group creator can delete the group")
+        
+        # Delete related events for this group
+        cursor.execute("DELETE FROM events WHERE group_id = %s", (group_id,))
+        
+        # Delete group members
+        cursor.execute("DELETE FROM group_members WHERE group_id = %s", (group_id,))
+        
+        # Delete the group itself
+        cursor.execute("DELETE FROM group_list WHERE id = %s", (group_id,))
+        
+        db.commit()
+        return {"message": "Group deleted successfully"}
+        
+    finally:
+        cursor.close()
+        db.close()
+
 @app.get("/events", response_model=list[EventOut])
 def get_events(user_id: int = Depends(get_current_user)):
     db = get_db_connection()

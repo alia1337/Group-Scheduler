@@ -42,6 +42,7 @@ const MyCalendarPage = () => {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
   const [userIsAdmin, setUserIsAdmin] = useState(false);
+  const [userIsCreator, setUserIsCreator] = useState(false);
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const monthYearPickerRef = useRef(null);
@@ -408,6 +409,11 @@ const MyCalendarPage = () => {
         // console.log("Group members data:", data);
         setGroupMembers(data.members);
         setUserIsAdmin(data.user_is_admin === 1 || data.user_is_admin === true);
+        
+        // Check if current user is the creator
+        const currentGroup = groups.find(g => g.group_id === groupId);
+        setUserIsCreator(currentGroup?.is_creator === 1);
+        
         setSelectedGroupId(groupId);
         setShowMembersModal(true);
       } else {
@@ -490,6 +496,42 @@ const MyCalendarPage = () => {
     } catch (error) {
       console.error("Error updating group name:", error);
       alert("Error updating group name");
+    }
+  };
+
+  const deleteGroup = async (groupId) => {
+    if (!window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/groups/${groupId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        setShowMembersModal(false);
+        // Refresh groups list
+        const groupsRes = await fetch("http://localhost:8000/groups", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const groupsData = await groupsRes.json();
+        setGroups(groupsData);
+        setVisibleGroups(groupsData.map((g) => g.group_id));
+        alert("Group deleted successfully!");
+      } else {
+        const errorData = await res.json();
+        alert(errorData.detail || "Failed to delete group");
+      }
+    } catch (error) {
+      console.error("Error deleting group:", error);
+      alert("Error deleting group");
     }
   };
 
@@ -1172,6 +1214,7 @@ const MyCalendarPage = () => {
                   setShowMembersModal(false);
                   setEditingGroupName(false);
                   setNewGroupName("");
+                  setUserIsCreator(false);
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
@@ -1298,13 +1341,26 @@ const MyCalendarPage = () => {
               </div>
             )}
 
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setShowMembersModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Close
-              </button>
+            <div className="mt-6 flex justify-between">
+              {Boolean(userIsCreator) && (
+                <button
+                  onClick={() => deleteGroup(selectedGroupId)}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete Group
+                </button>
+              )}
+              <div className={Boolean(userIsCreator) ? "" : "ml-auto"}>
+                <button
+                  onClick={() => {
+                    setShowMembersModal(false);
+                    setUserIsCreator(false);
+                  }}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
