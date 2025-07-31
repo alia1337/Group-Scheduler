@@ -35,6 +35,9 @@ const MyCalendarPage = () => {
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [googleEvents, setGoogleEvents] = useState([]);
   const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [joinKey, setJoinKey] = useState("");
+  const [joinMessage, setJoinMessage] = useState("");
   const monthYearPickerRef = useRef(null);
 
   const navigate = useNavigate();
@@ -301,6 +304,41 @@ const MyCalendarPage = () => {
     }
   };
 
+  const handleJoinGroup = async () => {
+    const token = localStorage.getItem("token");
+    if (!token || !joinKey.trim()) return;
+
+    try {
+      const res = await fetch("http://localhost:8000/groups/join", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ join_key: joinKey.trim() }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setJoinMessage(`✅ ${data.message}`);
+        setJoinKey("");
+        // Refresh groups list
+        fetch("http://localhost:8000/groups", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            setGroups(Array.isArray(data) ? data : []);
+            setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
+          });
+      } else {
+        setJoinMessage(`❌ ${data.detail || "Failed to join group"}`);
+      }
+    } catch (error) {
+      setJoinMessage("❌ Error joining group");
+    }
+  };
+
   // Show events from start of current year to end of next year
   const currentYear = new Date().getFullYear();
   const startOfCurrentYear = new Date(currentYear, 0, 1); // January 1st of current year
@@ -512,7 +550,7 @@ const MyCalendarPage = () => {
               <span className="ml-2 text-sm">My Events</span>
             </label>
             {groups.map((group) => (
-              <div key={group.group_id} className="mt-2">
+              <div key={group.group_id} className="mt-2 p-2 border rounded">
                 <label className="inline-flex items-center">
                   <input
                     type="checkbox"
@@ -520,10 +558,31 @@ const MyCalendarPage = () => {
                     onChange={() => toggleGroupVisibility(group.group_id)}
                     className="form-checkbox text-blue-600"
                   />
-                  <span className="ml-2 text-sm">{group.group_name}</span>
+                  <span className="ml-2 text-sm font-medium">{group.group_name}</span>
                 </label>
+                {group.is_creator && group.join_key && (
+                  <div className="mt-1 text-xs text-gray-600">
+                    Join Key: <code className="bg-gray-100 px-1 rounded">{group.join_key}</code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(group.join_key);
+                        alert("Join key copied!");
+                      }}
+                      className="ml-1 text-blue-600 hover:underline"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
+            
+            <button
+              onClick={() => setShowJoinGroupModal(true)}
+              className="mt-3 w-full bg-green-600 text-white px-3 py-2 rounded text-sm"
+            >
+              Join Group by Key
+            </button>
           </div>
         </div>
 
@@ -871,6 +930,70 @@ const MyCalendarPage = () => {
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
               >
                 Create Event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join Group Modal */}
+      {showJoinGroupModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Join Group</h3>
+              <button
+                onClick={() => {
+                  setShowJoinGroupModal(false);
+                  setJoinKey("");
+                  setJoinMessage("");
+                }}
+                className="text-gray-400 hover:text-gray-600 text-xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Enter Group Join Key
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. ABC123XY"
+                className="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                value={joinKey}
+                onChange={(e) => setJoinKey(e.target.value.toUpperCase())}
+                maxLength={10}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Ask a group creator for their join key
+              </p>
+            </div>
+
+            {joinMessage && (
+              <div className="mb-4 p-3 rounded bg-gray-50 text-sm">
+                {joinMessage}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowJoinGroupModal(false);
+                  setJoinKey("");
+                  setJoinMessage("");
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleJoinGroup}
+                disabled={!joinKey.trim()}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-6 py-2 rounded-lg font-medium"
+              >
+                Join Group
               </button>
             </div>
           </div>

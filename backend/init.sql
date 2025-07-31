@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS friends (
 CREATE TABLE IF NOT EXISTS group_list (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    join_key VARCHAR(10) UNIQUE NOT NULL,
     creator_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
@@ -61,5 +62,6 @@ CREATE TABLE IF NOT EXISTS group_members (
 CREATE INDEX idx_events_user_id ON events(user_id);
 CREATE INDEX idx_events_start ON events(start);
 CREATE INDEX idx_friends_user_id ON friends(user_id);
+CREATE INDEX idx_group_join_key ON group_list(join_key);
 CREATE INDEX idx_group_members_group_id ON group_members(group_id);
 CREATE INDEX idx_group_members_user_id ON group_members(user_id);

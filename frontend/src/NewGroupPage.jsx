@@ -7,6 +7,8 @@ const NewGroupPage = () => {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
+  const [joinKey, setJoinKey] = useState("");
+  const [showJoinKey, setShowJoinKey] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,7 +54,7 @@ const NewGroupPage = () => {
     };
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/groups", {
+      const res = await fetch("http://localhost:8000/groups", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +66,11 @@ const NewGroupPage = () => {
       const data = await res.json();
       if (res.ok) {
         setMessage("✅ Group created successfully!");
-        setTimeout(() => navigate("/calendar"), 1500);
+        if (data.join_key) {
+          setJoinKey(data.join_key);
+          setShowJoinKey(true);
+        }
+        // Don't navigate immediately - let user see the join key
       } else {
         setError(
           typeof data.detail === "string"
@@ -125,6 +131,33 @@ const NewGroupPage = () => {
 
         {message && <p className="mt-4 text-sm text-green-700 text-center">{message}</p>}
         {error && <p className="mt-4 text-sm text-red-600 text-center">{error}</p>}
+        
+        {showJoinKey && (
+          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded">
+            <h3 className="font-semibold text-green-800 mb-2">Group Join Key</h3>
+            <div className="flex items-center gap-2">
+              <code className="bg-white px-3 py-2 rounded border text-lg font-mono">{joinKey}</code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(joinKey);
+                  alert("Join key copied to clipboard!");
+                }}
+                className="text-blue-600 hover:underline text-sm"
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mt-2">
+              Share this key with friends so they can join your group
+            </p>
+            <button
+              onClick={() => navigate("/calendar")}
+              className="mt-3 text-blue-600 hover:underline"
+            >
+              Go to Calendar →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

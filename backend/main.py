@@ -11,6 +11,8 @@ import os
 import jwt
 import traceback
 import time
+import random
+import string
 from dotenv import load_dotenv
 
 from google_auth_oauthlib.flow import Flow
@@ -37,6 +39,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def generate_join_key(length=8):
+    """Generate a unique join key for groups"""
+    characters = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(characters) for _ in range(length))
 
 def get_db_connection(retries=3, delay=1):
     for attempt in range(retries):
@@ -99,6 +106,9 @@ class FriendIn(BaseModel):
 class GroupCreate(BaseModel):
     name: str
     member_emails: list[str]
+
+class GroupJoin(BaseModel):
+    join_key: str
 
 # Auth utils
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -228,7 +238,15 @@ def create_group(data: GroupCreate, user_id: int = Depends(get_current_user)):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("INSERT INTO group_list (name, creator_id) VALUES (%s, %s)", (data.name, user_id))
+        # Generate unique join key
+        while True:
+            join_key = generate_join_key()
+            cursor.execute("SELECT id FROM group_list WHERE join_key = %s", (join_key,))
+            if not cursor.fetchone():
+                break
+        
+        cursor.execute("INSERT INTO group_list (name, join_key, creator_id) VALUES (%s, %s, %s)", 
+                      (data.name, join_key, user_id))
         db.commit()
         cursor.execute("SELECT LAST_INSERT_ID() AS id")
         group_id = cursor.fetchone()["id"]
@@ -242,7 +260,7 @@ def create_group(data: GroupCreate, user_id: int = Depends(get_current_user)):
                 cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user["id"]))
 
         db.commit()
-        return {"message": "Group created successfully", "group_id": group_id}
+        return {"message": "Group created successfully", "group_id": group_id, "join_key": join_key}
     finally:
         cursor.close()
         db.close()
@@ -253,12 +271,66 @@ def get_user_groups(user_id: int = Depends(get_current_user)):
     cursor = db.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT gl.id AS group_id, gl.name AS group_name
+            SELECT gl.id AS group_id, gl.name AS group_name, gl.join_key,
+                   CASE WHEN gl.creator_id = %s THEN 1 ELSE 0 END AS is_creator
             FROM group_members gm
             JOIN group_list gl ON gm.group_id = gl.id
             WHERE gm.user_id = %s
-        """, (user_id,))
+        """, (user_id, user_id))
         return cursor.fetchall()
+    finally:
+        cursor.close()
+        db.close()
+
+@app.post("/groups/join")
+def join_group(data: GroupJoin, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Find group by join key
+        cursor.execute("SELECT id, name FROM group_list WHERE join_key = %s", (data.join_key.upper(),))
+        group = cursor.fetchone()
+        
+        if not group:
+            raise HTTPException(status_code=404, detail="Invalid join key")
+        
+        # Check if already a member
+        cursor.execute("SELECT id FROM group_members WHERE group_id = %s AND user_id = %s", 
+                      (group["id"], user_id))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Already a member of this group")
+        
+        # Add user to group
+        cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", 
+                      (group["id"], user_id))
+        db.commit()
+        
+        return {"message": f"Successfully joined group '{group['name']}'", "group_id": group["id"]}
+    finally:
+        cursor.close()
+        db.close()
+
+@app.get("/groups/search/{join_key}")
+def search_group(join_key: str, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT gl.id, gl.name, gl.join_key,
+                   COUNT(gm.user_id) as member_count,
+                   CASE WHEN EXISTS(SELECT 1 FROM group_members WHERE group_id = gl.id AND user_id = %s) 
+                        THEN 1 ELSE 0 END AS is_member
+            FROM group_list gl
+            LEFT JOIN group_members gm ON gl.id = gm.group_id
+            WHERE gl.join_key = %s
+            GROUP BY gl.id
+        """, (user_id, join_key.upper()))
+        
+        group = cursor.fetchone()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        return group
     finally:
         cursor.close()
         db.close()
