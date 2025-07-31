@@ -7,7 +7,7 @@ function HomePage() {
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerMessage, setRegisterMessage] = useState("");
 
-  const [loginEmail, setLoginEmail] = useState("");
+  const [loginUsernameOrEmail, setLoginUsernameOrEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
 
@@ -21,7 +21,7 @@ function HomePage() {
     if (storedName) setUsername(storedName);
 
     if (token) {
-      fetch("http://127.0.0.1:8000/me", {
+      fetch("http://localhost:8000/me", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.json())
@@ -36,7 +36,7 @@ function HomePage() {
   }, []);
 
   const handleRegister = async () => {
-    const response = await fetch("http://127.0.0.1:8000/register", {
+    const response = await fetch("http://localhost:8000/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -52,18 +52,18 @@ function HomePage() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!loginEmail || !loginPassword) {
-      setLoginMessage("Please enter both email and password.");
+    if (!loginUsernameOrEmail || !loginPassword) {
+      setLoginMessage("Please enter username/email and password.");
       return;
     }
 
     setLoginMessage("Logging in...");
     try {
-      const response = await fetch("http://127.0.0.1:8000/login", {
+      const response = await fetch("http://localhost:8000/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: loginEmail,
+          username_or_email: loginUsernameOrEmail,
           password: loginPassword,
         }),
       });
@@ -77,7 +77,7 @@ function HomePage() {
 
       localStorage.setItem("token", result.access_token);
 
-      const meRes = await fetch("http://127.0.0.1:8000/me", {
+      const meRes = await fetch("http://localhost:8000/me", {
         headers: { Authorization: `Bearer ${result.access_token}` },
       });
       const userData = await meRes.json();
@@ -128,12 +128,12 @@ function HomePage() {
           {!showRegisterTab ? (
             <form onSubmit={handleLogin}>
               <h2 className="text-xl font-semibold mb-4">Login</h2>
-              <label className="block text-sm mb-1">Email</label>
+              <label className="block text-sm mb-1">Email or Username</label>
               <input
-                type="email"
-                placeholder="Email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
+                type="text"
+                placeholder="Email or Username"
+                value={loginUsernameOrEmail}
+                onChange={(e) => setLoginUsernameOrEmail(e.target.value)}
                 className="w-full mb-2 p-2 border border-gray-300 rounded"
               />
               <label className="block text-sm mb-1">Password</label>

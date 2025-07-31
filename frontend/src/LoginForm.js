@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 
 function LoginForm() {
-  const [email, setEmail] = useState("");
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
 
@@ -11,12 +11,12 @@ function LoginForm() {
     setMessage("");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/login", {
+      const response = await fetch("http://localhost:8000/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username_or_email: usernameOrEmail, password }),
       });
 
       const data = await response.json();
@@ -26,7 +26,7 @@ function LoginForm() {
         localStorage.setItem("token", data.access_token);
 
         // Fetch user info
-        const meRes = await fetch("http://127.0.0.1:8000/me", {
+        const meRes = await fetch("http://localhost:8000/me", {
           headers: {
             Authorization: `Bearer ${data.access_token}`,
           },
@@ -51,10 +51,10 @@ function LoginForm() {
     <form onSubmit={handleLogin} className="max-w-md mx-auto bg-white shadow-lg p-6 rounded">
       <h2 className="text-xl font-semibold mb-4">Login</h2>
       <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        type="text"
+        placeholder="Username or Email"
+        value={usernameOrEmail}
+        onChange={(e) => setUsernameOrEmail(e.target.value)}
         required
         className="w-full mb-3 px-3 py-2 border rounded"
       />

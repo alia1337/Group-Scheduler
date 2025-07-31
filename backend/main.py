@@ -65,7 +65,7 @@ class RegisterData(BaseModel):
     password: str
 
 class LoginData(BaseModel):
-    email: str
+    username_or_email: str
     password: str
 
 class TokenData(BaseModel):
@@ -131,9 +131,15 @@ def register(data: RegisterData):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
+        # Check for duplicate email
         cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Check for duplicate username
+        cursor.execute("SELECT * FROM users WHERE username = %s", (data.username,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Username already taken")
 
         hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
         cursor.execute("INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
@@ -149,10 +155,15 @@ def login(data: LoginData):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT * FROM users WHERE email = %s", (data.email,))
+        # Check if the input is an email or username
+        if "@" in data.username_or_email:
+            cursor.execute("SELECT * FROM users WHERE email = %s", (data.username_or_email,))
+        else:
+            cursor.execute("SELECT * FROM users WHERE username = %s", (data.username_or_email,))
+        
         user = cursor.fetchone()
         if not user or not bcrypt.checkpw(data.password.encode(), user["password"].encode()):
-            raise HTTPException(status_code=401, detail="Incorrect email or password")
+            raise HTTPException(status_code=401, detail="Incorrect username/email or password")
 
         token = create_access_token({"user_id": user["id"], "email": user["email"]})
         return {"access_token": token, "token_type": "bearer"}
@@ -320,7 +331,8 @@ def google_login(user_id: int = Depends(get_current_user)):
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
-            state=str(user_id)
+            state=str(user_id),
+            prompt='select_account'
         )
         print(f"Generated auth URL for user {user_id}: {authorization_url[:100]}...")
         return {"auth_url": authorization_url}

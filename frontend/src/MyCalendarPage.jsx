@@ -45,7 +45,7 @@ const MyCalendarPage = () => {
     if (user) setUsername(user);
     if (!token) return;
 
-    fetch("http://127.0.0.1:8000/events", {
+    fetch("http://localhost:8000/events", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
@@ -68,7 +68,7 @@ const MyCalendarPage = () => {
         setEvents([]);
       });
 
-    fetch("http://127.0.0.1:8000/groups", {
+    fetch("http://localhost:8000/groups", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -83,7 +83,7 @@ const MyCalendarPage = () => {
       });
 
     // Check if Google Calendar is connected and fetch events
-    fetch("http://127.0.0.1:8000/me", {
+    fetch("http://localhost:8000/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -95,7 +95,7 @@ const MyCalendarPage = () => {
           console.log("Google Calendar is connected, setting state and fetching events");
           setIsGoogleConnected(true);
           // Fetch Google Calendar events
-          fetch("http://127.0.0.1:8000/auth/google/events", {
+          fetch("http://localhost:8000/auth/google/events", {
             headers: { Authorization: `Bearer ${token}` },
           })
             .then((res) => res.json())
@@ -126,7 +126,7 @@ const MyCalendarPage = () => {
       // Fetch user data again to get updated connection status
       const token = localStorage.getItem("token");
       if (token) {
-        fetch("http://127.0.0.1:8000/me", {
+        fetch("http://localhost:8000/me", {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then((res) => res.json())
@@ -135,7 +135,7 @@ const MyCalendarPage = () => {
             if (userData.google_calendar_connected) {
               setIsGoogleConnected(true);
               // Fetch Google events
-              fetch("http://127.0.0.1:8000/auth/google/events", {
+              fetch("http://localhost:8000/auth/google/events", {
                 headers: { Authorization: `Bearer ${token}` },
               })
                 .then((res) => res.json())
@@ -239,7 +239,7 @@ const MyCalendarPage = () => {
       }
     }
 
-    const meRes = await fetch("http://127.0.0.1:8000/me", {
+    const meRes = await fetch("http://localhost:8000/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
     const user = await meRes.json();
@@ -254,7 +254,7 @@ const MyCalendarPage = () => {
       friend_emails: newEvent.friend_emails.split(",").map((email) => email.trim()).filter(email => email),
     };
 
-    const res = await fetch("http://127.0.0.1:8000/events", {
+    const res = await fetch("http://localhost:8000/events", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -287,7 +287,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/google/login", {
+      const res = await fetch("http://localhost:8000/auth/google/login", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -547,7 +547,7 @@ const MyCalendarPage = () => {
                       if (!token) return;
                       
                       try {
-                        const res = await fetch("http://127.0.0.1:8000/auth/google/disconnect", {
+                        const res = await fetch("http://localhost:8000/auth/google/disconnect", {
                           method: "POST",
                           headers: { Authorization: `Bearer ${token}` },
                         });
