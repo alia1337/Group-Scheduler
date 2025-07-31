@@ -38,6 +38,12 @@ const MyCalendarPage = () => {
   const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
   const [joinKey, setJoinKey] = useState("");
   const [joinMessage, setJoinMessage] = useState("");
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [userIsAdmin, setUserIsAdmin] = useState(false);
+  const [editingGroupName, setEditingGroupName] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const monthYearPickerRef = useRef(null);
 
   const navigate = useNavigate();
@@ -76,6 +82,7 @@ const MyCalendarPage = () => {
     })
       .then((res) => res.json())
       .then((data) => {
+        // console.log("Groups data received:", data);
         setGroups(Array.isArray(data) ? data : []);
         setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
       })
@@ -387,14 +394,110 @@ const MyCalendarPage = () => {
     );
   };
 
+  const viewGroupMembers = async (groupId) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/groups/${groupId}/members`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // console.log("Group members data:", data);
+        setGroupMembers(data.members);
+        setUserIsAdmin(data.user_is_admin === 1 || data.user_is_admin === true);
+        setSelectedGroupId(groupId);
+        setShowMembersModal(true);
+      } else {
+        alert("Failed to fetch group members");
+      }
+    } catch (error) {
+      console.error("Error fetching group members:", error);
+      alert("Error fetching group members");
+    }
+  };
+
+  const performAdminAction = async (userId, action) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("http://localhost:8000/groups/admin-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          group_id: selectedGroupId,
+          user_id: userId,
+          action: action,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message);
+        // Refresh the members list
+        viewGroupMembers(selectedGroupId);
+        // Refresh groups list to update admin status
+        const token = localStorage.getItem("token");
+        fetch("http://localhost:8000/groups", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((res) => res.json())
+          .then((data) => setGroups(data))
+          .catch((err) => console.error("Error refreshing groups:", err));
+      } else {
+        alert(data.detail || "Action failed");
+      }
+    } catch (error) {
+      console.error("Error performing admin action:", error);
+      alert("Error performing action");
+    }
+  };
+
+  const updateGroupName = async (groupId, newName) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/groups/${groupId}/name`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newName }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert("Group name updated successfully!");
+        setEditingGroupName(false);
+        setNewGroupName("");
+        // Refresh groups list
+        const groupsRes = await fetch("http://localhost:8000/groups", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const groupsData = await groupsRes.json();
+        setGroups(groupsData);
+      } else {
+        alert(data.detail || "Failed to update group name");
+      }
+    } catch (error) {
+      console.error("Error updating group name:", error);
+      alert("Error updating group name");
+    }
+  };
+
   return (
     <div className="bg-gray-100 min-h-screen py-6 px-4">
       <header className="flex justify-between items-center px-8 py-4 bg-white shadow-sm mb-6">
         <h1 className="text-2xl font-bold">Group Scheduler</h1>
         <nav className="space-x-6">
-          <Link to="/" className="hover:underline font-medium">
-            Home
-          </Link>
           <Link to="/new-group" className="hover:underline font-medium">
             New Group
           </Link>
@@ -550,30 +653,88 @@ const MyCalendarPage = () => {
               <span className="ml-2 text-sm">My Events</span>
             </label>
             {groups.map((group) => (
-              <div key={group.group_id} className="mt-2 p-2 border rounded">
-                <label className="inline-flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={visibleGroups.includes(group.group_id)}
-                    onChange={() => toggleGroupVisibility(group.group_id)}
-                    className="form-checkbox text-blue-600"
-                  />
-                  <span className="ml-2 text-sm font-medium">{group.group_name}</span>
-                </label>
-                {group.is_creator && group.join_key && (
-                  <div className="mt-1 text-xs text-gray-600">
-                    Join Key: <code className="bg-gray-100 px-1 rounded">{group.join_key}</code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(group.join_key);
-                        alert("Join key copied!");
-                      }}
-                      className="ml-1 text-blue-600 hover:underline"
-                    >
-                      Copy
-                    </button>
+              <div key={group.group_id} className="mt-2 p-3 border rounded-lg bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={visibleGroups.includes(group.group_id)}
+                      onChange={() => toggleGroupVisibility(group.group_id)}
+                      className="form-checkbox text-blue-600"
+                    />
+                    <span className="ml-2 text-sm font-medium">{String(group.group_name || 'Unnamed Group').trim()}</span>
+                    {group.is_admin === 1 && (
+                      <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                        Admin
+                      </span>
+                    )}
+                  </label>
+                  <button
+                    onClick={() => viewGroupMembers(group.group_id)}
+                    className="text-gray-500 hover:text-gray-700 p-1"
+                    title="Group Settings"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Join Key */}
+                {group.join_key && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-700">
+                        <span className="font-medium">Join Key:</span>{" "}
+                        <code className="bg-white px-2 py-1 rounded border text-sm font-mono">{group.join_key}</code>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(group.join_key);
+                          alert("Join key copied to clipboard!");
+                        }}
+                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {/* Members List - Vertical Layout */}
+                <div className="mt-3">
+                  <div className="text-xs font-medium text-gray-700 mb-2">Members:</div>
+                  <div className="space-y-1">
+                    {group.members && group.members.map((member) => (
+                      <div key={member.username} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                            {(member.username || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-gray-800">{String(member.username || 'Unknown User').trim()}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {member.is_creator === 1 && (
+                            <span className="text-xs bg-red-100 text-red-800 px-1 py-0.5 rounded">
+                              Creator
+                            </span>
+                          )}
+                          {member.is_admin === 1 && member.is_creator !== 1 && (
+                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded">
+                              Admin
+                            </span>
+                          )}
+                          {member.is_admin !== 1 && member.is_creator !== 1 && (
+                            <span className="text-xs bg-gray-100 text-gray-800 px-1 py-0.5 rounded">
+                              Member
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             ))}
             
@@ -994,6 +1155,155 @@ const MyCalendarPage = () => {
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-6 py-2 rounded-lg font-medium"
               >
                 Join Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Settings Modal */}
+      {showMembersModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">Group Settings</h3>
+              <button
+                onClick={() => {
+                  setShowMembersModal(false);
+                  setEditingGroupName(false);
+                  setNewGroupName("");
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Group Name Section */}
+            {Boolean(userIsAdmin) && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-gray-800">Group Name</h4>
+                  {!Boolean(editingGroupName) && (
+                    <button
+                      onClick={() => {
+                        setEditingGroupName(true);
+                        const currentGroup = groups.find(g => g.group_id === selectedGroupId);
+                        setNewGroupName(currentGroup?.group_name || "");
+                      }}
+                      className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {editingGroupName ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      className="flex-1 text-sm border border-gray-300 px-2 py-1 rounded focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter group name"
+                    />
+                    <button
+                      onClick={() => updateGroupName(selectedGroupId, newGroupName)}
+                      disabled={!newGroupName.trim()}
+                      className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:bg-gray-300"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingGroupName(false);
+                        setNewGroupName("");
+                      }}
+                      className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-600">
+                    {groups.find(g => g.group_id === selectedGroupId)?.group_name || "Unnamed Group"}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {groupMembers.map((member) => (
+                <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
+                      {member.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-medium">{member.username}</div>
+                      <div className="text-sm text-gray-500">{member.email}</div>
+                    </div>
+                    <div className="flex gap-1">
+                      {Boolean(member.is_creator === 1) && (
+                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                          Creator
+                        </span>
+                      )}
+                      {Boolean(member.is_admin === 1 && member.is_creator !== 1) && (
+                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                          Admin
+                        </span>
+                      )}
+                      {Boolean(member.is_admin !== 1 && member.is_creator !== 1) && (
+                        <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                          Member
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {Boolean(userIsAdmin && member.is_creator !== 1) && (
+                    <div className="flex gap-2">
+                      {member.is_admin !== 1 ? (
+                        <button
+                          onClick={() => performAdminAction(member.id, "promote")}
+                          className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                        >
+                          Make Admin
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => performAdminAction(member.id, "demote")}
+                          className="text-xs bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700"
+                        >
+                          Remove Admin
+                        </button>
+                      )}
+                      <button
+                        onClick={() => performAdminAction(member.id, "kick")}
+                        className="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                      >
+                        Kick
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {!Boolean(userIsAdmin) && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Only group admins can manage members. Contact an admin if you need to make changes.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowMembersModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Close
               </button>
             </div>
           </div>

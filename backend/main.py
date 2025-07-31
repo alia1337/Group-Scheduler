@@ -110,6 +110,14 @@ class GroupCreate(BaseModel):
 class GroupJoin(BaseModel):
     join_key: str
 
+class AdminAction(BaseModel):
+    group_id: int
+    user_id: int
+    action: str  # "promote", "demote", "kick"
+
+class GroupNameUpdate(BaseModel):
+    name: str
+
 # Auth utils
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -251,7 +259,7 @@ def create_group(data: GroupCreate, user_id: int = Depends(get_current_user)):
         cursor.execute("SELECT LAST_INSERT_ID() AS id")
         group_id = cursor.fetchone()["id"]
 
-        cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (group_id, user_id))
+        cursor.execute("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (%s, %s, TRUE)", (group_id, user_id))
 
         for email in data.member_emails:
             cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
@@ -272,12 +280,29 @@ def get_user_groups(user_id: int = Depends(get_current_user)):
     try:
         cursor.execute("""
             SELECT gl.id AS group_id, gl.name AS group_name, gl.join_key,
-                   CASE WHEN gl.creator_id = %s THEN 1 ELSE 0 END AS is_creator
+                   CASE WHEN gl.creator_id = %s THEN 1 ELSE 0 END AS is_creator,
+                   gm.is_admin
             FROM group_members gm
             JOIN group_list gl ON gm.group_id = gl.id
             WHERE gm.user_id = %s
         """, (user_id, user_id))
-        return cursor.fetchall()
+        
+        groups = cursor.fetchall()
+        
+        # For each group, get the member usernames
+        for group in groups:
+            cursor.execute("""
+                SELECT u.username, gm.is_admin,
+                       CASE WHEN gl.creator_id = u.id THEN 1 ELSE 0 END AS is_creator
+                FROM group_members gm
+                JOIN users u ON gm.user_id = u.id
+                JOIN group_list gl ON gm.group_id = gl.id
+                WHERE gm.group_id = %s
+                ORDER BY gm.is_admin DESC, u.username
+            """, (group['group_id'],))
+            group['members'] = cursor.fetchall()
+        
+        return groups
     finally:
         cursor.close()
         db.close()
@@ -331,6 +356,141 @@ def search_group(join_key: str, user_id: int = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Group not found")
         
         return group
+    finally:
+        cursor.close()
+        db.close()
+
+@app.get("/groups/{group_id}/members")
+def get_group_members(group_id: int, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if user is a member of the group
+        cursor.execute("""
+            SELECT gm.is_admin FROM group_members gm 
+            WHERE gm.group_id = %s AND gm.user_id = %s
+        """, (group_id, user_id))
+        
+        member_status = cursor.fetchone()
+        if not member_status:
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        
+        # Get all group members
+        cursor.execute("""
+            SELECT u.id, u.username, u.email, gm.is_admin,
+                   gl.creator_id = u.id AS is_creator
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            JOIN group_list gl ON gm.group_id = gl.id
+            WHERE gm.group_id = %s
+            ORDER BY gm.is_admin DESC, u.username
+        """, (group_id,))
+        
+        members = cursor.fetchall()
+        return {
+            "group_id": group_id,
+            "members": members,
+            "user_is_admin": member_status["is_admin"]
+        }
+    finally:
+        cursor.close()
+        db.close()
+
+@app.post("/groups/admin-action")
+def perform_admin_action(data: AdminAction, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if the requesting user is an admin of the group
+        cursor.execute("""
+            SELECT gm.is_admin, gl.creator_id
+            FROM group_members gm
+            JOIN group_list gl ON gm.group_id = gl.id
+            WHERE gm.group_id = %s AND gm.user_id = %s
+        """, (data.group_id, user_id))
+        
+        admin_status = cursor.fetchone()
+        if not admin_status:
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        
+        if not admin_status["is_admin"]:
+            raise HTTPException(status_code=403, detail="You do not have admin privileges")
+        
+        # Don't allow actions on the group creator unless you are the creator
+        cursor.execute("SELECT creator_id FROM group_list WHERE id = %s", (data.group_id,))
+        group_info = cursor.fetchone()
+        
+        if data.user_id == group_info["creator_id"] and user_id != group_info["creator_id"]:
+            raise HTTPException(status_code=403, detail="Cannot perform actions on the group creator")
+        
+        if data.action == "promote":
+            cursor.execute("""
+                UPDATE group_members SET is_admin = TRUE 
+                WHERE group_id = %s AND user_id = %s
+            """, (data.group_id, data.user_id))
+            message = "User promoted to admin"
+            
+        elif data.action == "demote":
+            # Don't allow demoting the creator
+            if data.user_id == group_info["creator_id"]:
+                raise HTTPException(status_code=403, detail="Cannot demote the group creator")
+            
+            cursor.execute("""
+                UPDATE group_members SET is_admin = FALSE 
+                WHERE group_id = %s AND user_id = %s
+            """, (data.group_id, data.user_id))
+            message = "User demoted from admin"
+            
+        elif data.action == "kick":
+            # Don't allow kicking the creator
+            if data.user_id == group_info["creator_id"]:
+                raise HTTPException(status_code=403, detail="Cannot kick the group creator")
+            
+            cursor.execute("""
+                DELETE FROM group_members 
+                WHERE group_id = %s AND user_id = %s
+            """, (data.group_id, data.user_id))
+            message = "User kicked from group"
+            
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        
+        db.commit()
+        return {"message": message}
+        
+    finally:
+        cursor.close()
+        db.close()
+
+@app.put("/groups/{group_id}/name")
+def update_group_name(group_id: int, data: GroupNameUpdate, user_id: int = Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if user is an admin of the group
+        cursor.execute("""
+            SELECT gm.is_admin FROM group_members gm
+            WHERE gm.group_id = %s AND gm.user_id = %s
+        """, (group_id, user_id))
+        
+        admin_status = cursor.fetchone()
+        if not admin_status:
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        
+        if not admin_status["is_admin"]:
+            raise HTTPException(status_code=403, detail="You do not have admin privileges")
+        
+        # Update the group name
+        cursor.execute("""
+            UPDATE group_list SET name = %s WHERE id = %s
+        """, (data.name.strip(), group_id))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        db.commit()
+        return {"message": "Group name updated successfully"}
+        
     finally:
         cursor.close()
         db.close()

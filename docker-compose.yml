@@ -26,6 +26,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: group_scheduler_backend
+    env_file:
+      - ./backend/.env
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
@@ -58,6 +60,8 @@ services:
       - /app/node_modules  # Prevent node_modules from being overwritten
     environment:
       - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
     stdin_open: true  # Needed for React hot reload

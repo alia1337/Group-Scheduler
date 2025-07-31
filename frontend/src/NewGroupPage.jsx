@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 
 const NewGroupPage = () => {
   const [groupName, setGroupName] = useState("");
-  const [emails, setEmails] = useState([""]);
+  const [emails, setEmails] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
@@ -43,10 +43,7 @@ const NewGroupPage = () => {
       return;
     }
 
-    if (cleanedEmails.length === 0) {
-      setError("Please add at least one friend email.");
-      return;
-    }
+    // Emails are now optional - groups can be created without members
 
     const payload = {
       name: groupName.trim(),
@@ -54,6 +51,7 @@ const NewGroupPage = () => {
     };
 
     try {
+      console.log("Creating group with payload:", payload);
       const res = await fetch("http://localhost:8000/groups", {
         method: "POST",
         headers: {
@@ -64,6 +62,8 @@ const NewGroupPage = () => {
       });
 
       const data = await res.json();
+      console.log("Response:", res.status, data);
+      
       if (res.ok) {
         setMessage("✅ Group created successfully!");
         if (data.join_key) {
@@ -79,7 +79,8 @@ const NewGroupPage = () => {
         );
       }
     } catch (err) {
-      setError("Something went wrong.");
+      console.error("Error creating group:", err);
+      setError("Something went wrong: " + err.message);
     }
   };
 
@@ -88,7 +89,6 @@ const NewGroupPage = () => {
       <header className="flex justify-between items-center px-8 py-4 bg-white shadow-sm mb-6">
         <h1 className="text-2xl font-bold">Group Scheduler</h1>
         <nav className="space-x-6">
-          <Link to="/" className="hover:underline font-medium">Home</Link>
           <Link to="/calendar" className="hover:underline font-medium">My Calendar</Link>
           <Link to="/new-group" className="hover:underline font-medium">New Group</Link>
           {username && <span className="text-gray-600">Welcome {username}</span>}
@@ -105,20 +105,32 @@ const NewGroupPage = () => {
           onChange={(e) => setGroupName(e.target.value)}
         />
 
-        {emails.map((email, index) => (
-          <input
-            key={index}
-            type="email"
-            placeholder={`Friend Email #${index + 1}`}
-            className="w-full border px-3 py-2 mb-2 rounded"
-            value={email}
-            onChange={(e) => handleEmailChange(index, e.target.value)}
-          />
-        ))}
-
-        <button onClick={handleAddEmail} className="mb-4 text-blue-600 hover:underline">
-          + Add another friend
-        </button>
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 mb-2">Add friends to your group (optional):</p>
+          {emails.map((email, index) => (
+            <div key={index} className="flex gap-2 mb-2">
+              <input
+                type="email"
+                placeholder={`Friend Email #${index + 1}`}
+                className="flex-1 border px-3 py-2 rounded"
+                value={email}
+                onChange={(e) => handleEmailChange(index, e.target.value)}
+              />
+              <button
+                onClick={() => {
+                  const updated = emails.filter((_, i) => i !== index);
+                  setEmails(updated);
+                }}
+                className="text-red-600 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button onClick={handleAddEmail} className="text-blue-600 hover:underline">
+            + Add a friend
+          </button>
+        </div>
 
         <div className="flex justify-end">
           <button
