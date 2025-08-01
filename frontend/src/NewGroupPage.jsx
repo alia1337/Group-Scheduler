@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 const NewGroupPage = () => {
   const [groupName, setGroupName] = useState("");
   const [emails, setEmails] = useState([]);
@@ -52,7 +54,7 @@ const NewGroupPage = () => {
 
     try {
       console.log("Creating group with payload:", payload);
-      const res = await fetch("http://localhost:8000/groups", {
+      const res = await fetch(`${API_URL}/groups`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

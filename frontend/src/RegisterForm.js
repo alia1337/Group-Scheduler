@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 function RegisterForm() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -12,7 +14,7 @@ function RegisterForm() {
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8000/register", {
+      const res = await fetch(`${API_URL}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email, password }),

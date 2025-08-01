@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 function LoginForm() {
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -13,7 +15,7 @@ function LoginForm() {
     setMessage("");
 
     try {
-      const response = await fetch("http://localhost:8000/login", {
+      const response = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -28,7 +30,7 @@ function LoginForm() {
         localStorage.setItem("token", data.access_token);
 
         // Fetch user info
-        const meRes = await fetch("http://localhost:8000/me", {
+        const meRes = await fetch(`${API_URL}/me`, {
           headers: {
             Authorization: `Bearer ${data.access_token}`,
           },

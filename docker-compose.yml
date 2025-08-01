@@ -34,10 +34,6 @@ services:
       DB_USER: scheduler_user
       DB_PASSWORD: scheduler_pass123
       DB_NAME: scheduler_db
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-here}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URI: http://localhost:8000/auth/google/callback
     ports:
       - "8000:8000"
     volumes:

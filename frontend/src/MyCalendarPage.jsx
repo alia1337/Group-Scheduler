@@ -12,6 +12,8 @@ import "react-calendar/dist/Calendar.css";
 import "./google-style-agenda.css";
 import { Link, useNavigate } from "react-router-dom";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 const MyCalendarPage = () => {
   const [events, setEvents] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -55,7 +57,7 @@ const MyCalendarPage = () => {
     if (user) setUsername(user);
     if (!token) return;
 
-    fetch("http://localhost:8000/events", {
+    fetch(`${API_URL}/events`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
@@ -78,7 +80,7 @@ const MyCalendarPage = () => {
         setEvents([]);
       });
 
-    fetch("http://localhost:8000/groups", {
+    fetch(`${API_URL}/groups`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -94,7 +96,7 @@ const MyCalendarPage = () => {
       });
 
     // Check if Google Calendar is connected and fetch events
-    fetch("http://localhost:8000/me", {
+    fetch(`${API_URL}/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -106,7 +108,7 @@ const MyCalendarPage = () => {
           console.log("Google Calendar is connected, setting state and fetching events");
           setIsGoogleConnected(true);
           // Fetch Google Calendar events
-          fetch("http://localhost:8000/auth/google/events", {
+          fetch(`${API_URL}/auth/google/events`, {
             headers: { Authorization: `Bearer ${token}` },
           })
             .then((res) => res.json())
@@ -137,7 +139,7 @@ const MyCalendarPage = () => {
       // Fetch user data again to get updated connection status
       const token = localStorage.getItem("token");
       if (token) {
-        fetch("http://localhost:8000/me", {
+        fetch(`${API_URL}/me`, {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then((res) => res.json())
@@ -146,7 +148,7 @@ const MyCalendarPage = () => {
             if (userData.google_calendar_connected) {
               setIsGoogleConnected(true);
               // Fetch Google events
-              fetch("http://localhost:8000/auth/google/events", {
+              fetch(`${API_URL}/auth/google/events`, {
                 headers: { Authorization: `Bearer ${token}` },
               })
                 .then((res) => res.json())
@@ -250,7 +252,7 @@ const MyCalendarPage = () => {
       }
     }
 
-    const meRes = await fetch("http://localhost:8000/me", {
+    const meRes = await fetch(`${API_URL}/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const user = await meRes.json();
@@ -265,7 +267,7 @@ const MyCalendarPage = () => {
       friend_emails: newEvent.friend_emails.split(",").map((email) => email.trim()).filter(email => email),
     };
 
-    const res = await fetch("http://localhost:8000/events", {
+    const res = await fetch(`${API_URL}/events`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -298,7 +300,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/auth/google/login", {
+      const res = await fetch(`${API_URL}/auth/google/login`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -317,7 +319,7 @@ const MyCalendarPage = () => {
     if (!token || !joinKey.trim()) return;
 
     try {
-      const res = await fetch("http://localhost:8000/groups/join", {
+      const res = await fetch(`${API_URL}/groups/join`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -331,7 +333,7 @@ const MyCalendarPage = () => {
         setJoinMessage(`✅ ${data.message}`);
         setJoinKey("");
         // Refresh groups list
-        fetch("http://localhost:8000/groups", {
+        fetch(`${API_URL}/groups`, {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then((res) => res.json())
@@ -400,7 +402,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/groups/${groupId}/members`, {
+      const res = await fetch(`${API_URL}/groups/${groupId}/members`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -430,7 +432,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:8000/groups/admin-action", {
+      const res = await fetch(`${API_URL}/groups/admin-action`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -450,7 +452,7 @@ const MyCalendarPage = () => {
         viewGroupMembers(selectedGroupId);
         // Refresh groups list to update admin status
         const token = localStorage.getItem("token");
-        fetch("http://localhost:8000/groups", {
+        fetch(`${API_URL}/groups`, {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then((res) => res.json())
@@ -470,7 +472,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/groups/${groupId}/name`, {
+      const res = await fetch(`${API_URL}/groups/${groupId}/name`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -485,7 +487,7 @@ const MyCalendarPage = () => {
         setEditingGroupName(false);
         setNewGroupName("");
         // Refresh groups list
-        const groupsRes = await fetch("http://localhost:8000/groups", {
+        const groupsRes = await fetch(`${API_URL}/groups`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const groupsData = await groupsRes.json();
@@ -508,7 +510,7 @@ const MyCalendarPage = () => {
     if (!token) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/groups/${groupId}`, {
+      const res = await fetch(`${API_URL}/groups/${groupId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -518,7 +520,7 @@ const MyCalendarPage = () => {
       if (res.ok) {
         setShowMembersModal(false);
         // Refresh groups list
-        const groupsRes = await fetch("http://localhost:8000/groups", {
+        const groupsRes = await fetch(`${API_URL}/groups`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const groupsData = await groupsRes.json();
@@ -809,7 +811,7 @@ const MyCalendarPage = () => {
                       if (!token) return;
                       
                       try {
-                        const res = await fetch("http://localhost:8000/auth/google/disconnect", {
+                        const res = await fetch(`${API_URL}/auth/google/disconnect`, {
                           method: "POST",
                           headers: { Authorization: `Bearer ${token}` },
                         });
