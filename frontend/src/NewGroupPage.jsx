@@ -87,17 +87,7 @@ const NewGroupPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <header className="flex justify-between items-center px-8 py-4 bg-white shadow-sm mb-6">
-        <h1 className="text-2xl font-bold">Group Scheduler</h1>
-        <nav className="space-x-6">
-          <Link to="/calendar" className="hover:underline font-medium">My Calendar</Link>
-          <Link to="/new-group" className="hover:underline font-medium">New Group</Link>
-          {username && <span className="text-gray-600">Welcome {username}</span>}
-        </nav>
-      </header>
-
-      <div className="max-w-xl mx-auto bg-white p-6 rounded shadow">
+    <div className="max-w-xl mx-auto bg-white p-6 rounded shadow">
         <h2 className="text-xl font-semibold mb-4">Create New Group</h2>
         <input
           type="text"
@@ -172,7 +162,6 @@ const NewGroupPage = () => {
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 };

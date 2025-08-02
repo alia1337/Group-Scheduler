@@ -2,15 +2,9 @@ import React, { useEffect, useState, useRef } from "react";
 import {
   format,
   startOfToday,
-  endOfYear,
   isWithinInterval,
   addMonths,
   subMonths,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  addWeeks,
   addDays,
   isSameDay,
   isAfter,
@@ -19,7 +13,8 @@ import {
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import "./google-style-agenda.css";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useApp } from "./contexts/AppContext";
 
 // Helper function to format date with ordinal numbers (1st, 2nd, 3rd, etc.)
 const formatDateWithOrdinal = (date) => {
@@ -59,10 +54,10 @@ const formatTimeRange = (startTime, endTime) => {
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const MyCalendarPage = () => {
-  const [events, setEvents] = useState([]);
+  const { events, setEvents, groups, visibleGroups, showMyEvents, setShowMyEvents, addEvent, refreshEvents } = useApp();
+  const location = useLocation();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showPopup, setShowPopup] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayForView, setSelectedDayForView] = useState(null);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [newEvent, setNewEvent] = useState({
@@ -75,21 +70,8 @@ const MyCalendarPage = () => {
     friend_emails: "",
   });
   const [username, setUsername] = useState("");
-  const [showMyEvents, setShowMyEvents] = useState(true);
-  const [groups, setGroups] = useState([]);
-  const [visibleGroups, setVisibleGroups] = useState([]);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
-  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
-  const [joinKey, setJoinKey] = useState("");
-  const [joinMessage, setJoinMessage] = useState("");
-  const [showMembersModal, setShowMembersModal] = useState(false);
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
-  const [groupMembers, setGroupMembers] = useState([]);
-  const [userIsAdmin, setUserIsAdmin] = useState(false);
-  const [userIsCreator, setUserIsCreator] = useState(false);
-  const [editingGroupName, setEditingGroupName] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
   const [viewFilter, setViewFilter] = useState('today'); // 'today', 'upcoming'
   const [hasCheckedTodayEvents, setHasCheckedTodayEvents] = useState(false);
   const monthYearPickerRef = useRef(null);
@@ -97,48 +79,11 @@ const MyCalendarPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
     const user = localStorage.getItem("username");
     if (user) setUsername(user);
+    
+    const token = localStorage.getItem("token");
     if (!token) return;
-
-    fetch(`${API_URL}/events`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        // Ensure data is an array before setting
-        if (Array.isArray(data)) {
-          setEvents(data);
-        } else {
-          console.error("Events API returned non-array data:", data);
-          setEvents([]);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch events", err);
-        setEvents([]);
-      });
-
-    fetch(`${API_URL}/groups`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        // console.log("Groups data received:", data);
-        setGroups(Array.isArray(data) ? data : []);
-        setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch groups", err);
-        setGroups([]);
-        setVisibleGroups([]);
-      });
 
     // Check if Google Calendar is connected (for UI state only)
     fetch(`${API_URL}/me`, {
@@ -179,17 +124,7 @@ const MyCalendarPage = () => {
             if (userData.google_calendar_connected) {
               setIsGoogleConnected(true);
               // Refresh the main events list to include newly synced Google events
-              fetch(`${API_URL}/events`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
-                .then((res) => res.json())
-                .then((data) => {
-                  if (Array.isArray(data)) {
-                    setEvents(data);
-                    console.log("Refreshed events after Google OAuth, total:", data.length);
-                  }
-                })
-                .catch((err) => console.error("Failed to refresh events after OAuth", err));
+              refreshEvents();
             }
           });
       }
@@ -266,7 +201,6 @@ const MyCalendarPage = () => {
       ...prev,
       date: today
     }));
-    setSelectedDate(new Date());
     setShowPopup(true);
   };
 
@@ -318,7 +252,7 @@ const MyCalendarPage = () => {
 
     if (res.ok) {
       const savedEvent = await res.json();
-      setEvents((prev) => [...prev, savedEvent]);
+      addEvent(savedEvent);
       setShowPopup(false);
       setNewEvent({ 
         title: "", 
@@ -386,41 +320,6 @@ const MyCalendarPage = () => {
     }
   };
 
-  const handleJoinGroup = async () => {
-    const token = localStorage.getItem("token");
-    if (!token || !joinKey.trim()) return;
-
-    try {
-      const res = await fetch(`${API_URL}/groups/join`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ join_key: joinKey.trim() }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setJoinMessage(`✅ ${data.message}`);
-        setJoinKey("");
-        // Refresh groups list
-        fetch(`${API_URL}/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            setGroups(Array.isArray(data) ? data : []);
-            setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
-          });
-      } else {
-        setJoinMessage(`❌ ${data.detail || "Failed to join group"}`);
-      }
-    } catch (error) {
-      setJoinMessage("❌ Error joining group");
-    }
-  };
-
   // ALL events from today onwards (completely independent of view tabs)
   const today = startOfToday();
   const allEventsFromToday = events.filter((event) => {
@@ -430,6 +329,16 @@ const MyCalendarPage = () => {
 
   // ALL events (for calendar dots - completely independent of view tabs)
   const allCalendarEvents = allEventsFromToday.filter((event) => {
+    // Check if we're viewing a specific group
+    const urlParams = new URLSearchParams(location.search);
+    const selectedGroupId = urlParams.get('group');
+    
+    if (selectedGroupId) {
+      // If viewing a specific group, only show events from that group
+      return event.group_id === parseInt(selectedGroupId);
+    }
+    
+    // Default behavior: show all visible events
     // Always show Google Calendar events (they have google_event_id)
     if (event.google_event_id) return true;
     
@@ -536,746 +445,454 @@ const MyCalendarPage = () => {
     }
   }, [filteredEvents, viewFilter]);
 
-  const toggleGroupVisibility = (groupId) => {
-    setVisibleGroups((prev) =>
-      prev.includes(groupId)
-        ? prev.filter((id) => id !== groupId)
-        : [...prev, groupId]
-    );
-  };
-
-  const viewGroupMembers = async (groupId) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_URL}/groups/${groupId}/members`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        // console.log("Group members data:", data);
-        setGroupMembers(data.members);
-        setUserIsAdmin(data.user_is_admin === 1 || data.user_is_admin === true);
-        
-        // Check if current user is the creator
-        const currentGroup = groups.find(g => g.group_id === groupId);
-        setUserIsCreator(currentGroup?.is_creator === 1);
-        
-        setSelectedGroupId(groupId);
-        setShowMembersModal(true);
-      } else {
-        alert("Failed to fetch group members");
-      }
-    } catch (error) {
-      console.error("Error fetching group members:", error);
-      alert("Error fetching group members");
-    }
-  };
-
-  const performAdminAction = async (userId, action) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_URL}/groups/admin-action`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          group_id: selectedGroupId,
-          user_id: userId,
-          action: action,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message);
-        // Refresh the members list
-        viewGroupMembers(selectedGroupId);
-        // Refresh groups list to update admin status
-        const token = localStorage.getItem("token");
-        fetch(`${API_URL}/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((res) => res.json())
-          .then((data) => setGroups(data))
-          .catch((err) => console.error("Error refreshing groups:", err));
-      } else {
-        alert(data.detail || "Action failed");
-      }
-    } catch (error) {
-      console.error("Error performing admin action:", error);
-      alert("Error performing action");
-    }
-  };
-
-  const updateGroupName = async (groupId, newName) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_URL}/groups/${groupId}/name`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: newName }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert("Group name updated successfully!");
-        setEditingGroupName(false);
-        setNewGroupName("");
-        // Refresh groups list
-        const groupsRes = await fetch(`${API_URL}/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const groupsData = await groupsRes.json();
-        setGroups(groupsData);
-      } else {
-        alert(data.detail || "Failed to update group name");
-      }
-    } catch (error) {
-      console.error("Error updating group name:", error);
-      alert("Error updating group name");
-    }
-  };
-
-  const deleteGroup = async (groupId) => {
-    if (!window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
-      return;
-    }
-
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_URL}/groups/${groupId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (res.ok) {
-        setShowMembersModal(false);
-        // Refresh groups list
-        const groupsRes = await fetch(`${API_URL}/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const groupsData = await groupsRes.json();
-        setGroups(groupsData);
-        setVisibleGroups(groupsData.map((g) => g.group_id));
-        alert("Group deleted successfully!");
-      } else {
-        const errorData = await res.json();
-        alert(errorData.detail || "Failed to delete group");
-      }
-    } catch (error) {
-      console.error("Error deleting group:", error);
-      alert("Error deleting group");
-    }
-  };
-
   return (
-    <div className="bg-gray-100 min-h-screen py-6 px-4">
-      <header className="flex justify-between items-center px-8 py-4 bg-white shadow-sm mb-6">
-        <h1 className="text-2xl font-bold">Group Scheduler</h1>
-        <nav className="space-x-6">
-          <Link to="/personal-calendar" className="hover:underline font-medium">
-            Personal Calendar
-          </Link>
-          <Link to="/new-group" className="hover:underline font-medium">
-            New Group
-          </Link>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-white shadow rounded-lg p-4 relative">
+        <div className="flex justify-between items-center mb-2">
+          <button onClick={handlePrevMonth} className="px-3 py-2 text-sm font-medium hover:bg-gray-100 rounded">&laquo;</button>
           <button 
-            onClick={() => {
-              // TODO: Implement settings modal or page
-              alert("Settings page coming soon!");
-            }}
-            className="hover:bg-gray-100 p-2 rounded-full transition-colors"
-            title="Settings"
+            onClick={toggleMonthYearPicker}
+            className="text-lg font-semibold hover:bg-gray-100 px-3 py-1 rounded cursor-pointer"
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            {format(currentDate, "MMMM yyyy")}
           </button>
-          {username && <span className="text-gray-600">Welcome {username}</span>}
-          <button onClick={handleLogout} className="ml-4 text-red-600 hover:underline">
-            Logout
-          </button>
-        </nav>
-      </header>
+          <button onClick={handleNextMonth} className="px-3 py-2 text-sm font-medium hover:bg-gray-100 rounded">&raquo;</button>
+        </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white shadow rounded-lg p-4 relative">
-          <div className="flex justify-between items-center mb-2">
-            <button onClick={handlePrevMonth} className="px-3 py-2 text-sm font-medium hover:bg-gray-100 rounded">&laquo;</button>
-            <button 
-              onClick={toggleMonthYearPicker}
-              className="text-lg font-semibold hover:bg-gray-100 px-3 py-1 rounded cursor-pointer"
-            >
-              {format(currentDate, "MMMM yyyy")}
-            </button>
-            <button onClick={handleNextMonth} className="px-3 py-2 text-sm font-medium hover:bg-gray-100 rounded">&raquo;</button>
-          </div>
-
-          {/* Month/Year Picker Modal */}
-          {showMonthYearPicker && (
-            <div 
-              ref={monthYearPickerRef}
-              className="absolute top-12 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-4"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-800">Select Month & Year</h3>
+        {/* Month/Year Picker Modal */}
+        {showMonthYearPicker && (
+          <div 
+            ref={monthYearPickerRef}
+            className="absolute top-12 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-4"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold text-gray-800">Select Month & Year</h3>
+              <button 
+                onClick={() => setShowMonthYearPicker(false)}
+                className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+              >
+                ×
+              </button>
+            </div>
+            
+            {/* Year Selection */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
                 <button 
-                  onClick={() => setShowMonthYearPicker(false)}
-                  className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                  onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() - 1)}
+                  className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                 >
-                  ×
+                  ← {currentDate.getFullYear() - 1}
+                </button>
+                <span className="font-semibold">{currentDate.getFullYear()}</span>
+                <button 
+                  onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() + 1)}
+                  className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                >
+                  {currentDate.getFullYear() + 1} →
                 </button>
               </div>
-              
-              {/* Year Selection */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <button 
-                    onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() - 1)}
-                    className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
-                  >
-                    ← {currentDate.getFullYear() - 1}
-                  </button>
-                  <span className="font-semibold">{currentDate.getFullYear()}</span>
-                  <button 
-                    onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() + 1)}
-                    className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
-                  >
-                    {currentDate.getFullYear() + 1} →
-                  </button>
-                </div>
-              </div>
+            </div>
 
-              {/* Month Grid */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                ].map((monthName, index) => (
+            {/* Month Grid */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+              ].map((monthName, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleMonthYearSelect(index, currentDate.getFullYear())}
+                  className={`px-3 py-2 text-sm font-medium rounded hover:bg-blue-50 ${
+                    currentDate.getMonth() === index 
+                      ? 'bg-blue-100 text-blue-800 font-semibold' 
+                      : 'text-gray-700 hover:text-blue-600'
+                  }`}
+                >
+                  {monthName}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick Year Navigation */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <div className="flex justify-center gap-2 flex-wrap">
+                {[2023, 2024, 2025, 2026, 2027].map(year => (
                   <button
-                    key={index}
-                    onClick={() => handleMonthYearSelect(index, currentDate.getFullYear())}
-                    className={`px-3 py-2 text-sm font-medium rounded hover:bg-blue-50 ${
-                      currentDate.getMonth() === index 
-                        ? 'bg-blue-100 text-blue-800 font-semibold' 
-                        : 'text-gray-700 hover:text-blue-600'
+                    key={year}
+                    onClick={() => handleMonthYearSelect(currentDate.getMonth(), year)}
+                    className={`px-3 py-2 text-sm font-medium rounded ${
+                      currentDate.getFullYear() === year
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {monthName}
+                    {year}
                   </button>
                 ))}
               </div>
-
-              {/* Quick Year Navigation */}
-              <div className="mt-4 pt-3 border-t border-gray-200">
-                <div className="flex justify-center gap-2 flex-wrap">
-                  {[2023, 2024, 2025, 2026, 2027].map(year => (
-                    <button
-                      key={year}
-                      onClick={() => handleMonthYearSelect(currentDate.getMonth(), year)}
-                      className={`px-3 py-2 text-sm font-medium rounded ${
-                        currentDate.getFullYear() === year
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {year}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
-          )}
-          <Calendar
-            value={selectedCalendarDay}
-            activeStartDate={currentDate}
-            onClickDay={handleDayClick}
-            onActiveStartDateChange={({ activeStartDate }) => {
-              setCurrentDate(activeStartDate);
-            }}
-            view="month"
-            showNavigation={false}
-            showNeighboringMonth={false}
-            minDetail="month"
-            maxDetail="month"
-            tileContent={({ date, view }) => {
-              if (view === "month") {
-                const dayKey = format(date, "yyyy-MM-dd");
-                const dayEvents = calendarEvents[dayKey] || [];
-                console.log(`📅 Calendar tile for ${dayKey}: ${dayEvents.length} events`);
-                
-                if (dayEvents.length > 0) {
-                  return (
-                    <div className="flex gap-1 max-w-full overflow-hidden">
-                      {dayEvents.slice(0, 3).map((event, idx) => (
-                        <div
-                          key={idx}
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: event.color }}
-                          title={event.title}
-                        ></div>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <div 
-                          className="w-2 h-2 rounded-full bg-gray-400"
-                          title={`+${dayEvents.length - 3} more events`}
-                        ></div>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              }
-            }}
-          />
-          <div className="mt-4">
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={showMyEvents}
-                onChange={(e) => setShowMyEvents(e.target.checked)}
-                className="form-checkbox text-blue-600"
-              />
-              <span className="ml-2 text-sm">My Events</span>
-            </label>
-            {groups.map((group) => (
-              <div key={group.group_id} className="mt-2 p-3 border rounded-lg bg-gray-50">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="inline-flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={visibleGroups.includes(group.group_id)}
-                      onChange={() => toggleGroupVisibility(group.group_id)}
-                      className="form-checkbox text-blue-600"
-                    />
-                    <span className="ml-2 text-sm font-medium">{String(group.group_name || 'Unnamed Group').trim()}</span>
-                    {group.is_admin === 1 && (
-                      <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                        Admin
-                      </span>
+          </div>
+        )}
+        <Calendar
+          value={selectedCalendarDay}
+          activeStartDate={currentDate}
+          onClickDay={handleDayClick}
+          onActiveStartDateChange={({ activeStartDate }) => {
+            setCurrentDate(activeStartDate);
+          }}
+          view="month"
+          showNavigation={false}
+          showNeighboringMonth={false}
+          minDetail="month"
+          maxDetail="month"
+          tileContent={({ date, view }) => {
+            if (view === "month") {
+              const dayKey = format(date, "yyyy-MM-dd");
+              const dayEvents = calendarEvents[dayKey] || [];
+              console.log(`📅 Calendar tile for ${dayKey}: ${dayEvents.length} events`);
+              
+              if (dayEvents.length > 0) {
+                return (
+                  <div className="flex gap-1 max-w-full overflow-hidden">
+                    {dayEvents.slice(0, 3).map((event, idx) => (
+                      <div
+                        key={idx}
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: event.color }}
+                        title={event.title}
+                      ></div>
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <div 
+                        className="w-2 h-2 rounded-full bg-gray-400"
+                        title={`+${dayEvents.length - 3} more events`}
+                      ></div>
                     )}
-                  </label>
+                  </div>
+                );
+              }
+              return null;
+            }
+          }}
+        />
+      </div>
+
+      <div className="md:col-span-2 bg-white shadow rounded-lg p-4">
+        <div className="flex justify-between mb-4">
+          <button
+            onClick={handleCreateEvent}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+          >
+            <span className="text-base">+</span>
+            Create Event
+          </button>
+          
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            {/* View Filter Buttons */}
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => setViewFilter('today')}
+                className={`px-4 py-2 text-sm font-medium rounded ${
+                  viewFilter === 'today'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setViewFilter('upcoming')}
+                className={`px-4 py-2 text-sm font-medium rounded ${
+                  viewFilter === 'upcoming'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Upcoming
+              </button>
+            </div>
+            
+            {/* Google Calendar Connection */}
+            <div className="flex gap-2">
+              {isGoogleConnected ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-green-600 text-sm">✓ Google Calendar Connected</span>
                   <button
-                    onClick={() => viewGroupMembers(group.group_id)}
-                    className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 text-sm font-medium rounded"
-                    title="Group Settings"
+                    onClick={async () => {
+                      const token = localStorage.getItem("token");
+                      if (!token) return;
+                      
+                      try {
+                        const res = await fetch(`${API_URL}/auth/google/disconnect`, {
+                          method: "POST",
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        
+                        if (res.ok) {
+                          setIsGoogleConnected(false);
+                          // Refresh events to remove Google Calendar events
+                          refreshEvents();
+                          console.log("Google Calendar disconnected successfully");
+                        } else {
+                          console.error("Failed to disconnect Google Calendar");
+                        }
+                      } catch (error) {
+                        console.error("Error disconnecting Google Calendar:", error);
+                      }
+                    }}
+                    className="border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white px-4 py-2 text-sm font-medium rounded transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
+                    Disconnect
                   </button>
                 </div>
+              ) : (
+                <button
+                  onClick={handleConnectGoogle}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium rounded"
+                >
+                  Connect Google Calendar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
 
-                {/* Join Key */}
-                {group.join_key && (
-                  <div className="mt-2 p-2 bg-blue-50 rounded">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-gray-700">
-                        <span className="font-medium">Join Key:</span>{" "}
-                        <code className="bg-white px-2 py-1 rounded border text-sm font-mono">{group.join_key}</code>
-                      </div>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(group.join_key);
-                          alert("Join key copied to clipboard!");
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm font-medium rounded"
-                      >
-                        Copy
-                      </button>
-                    </div>
+        {/* Selected Day Events Section */}
+        {selectedDayForView && (
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="font-semibold text-gray-900">
+                {format(selectedDayForView, "EEEE, MMMM d")}
+              </h4>
+              <button
+                onClick={() => {
+                  setSelectedDayForView(null);
+                  setSelectedCalendarDay(null);
+                }}
+                className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+              >
+                ×
+              </button>
+            </div>
+            
+            {(() => {
+              const dayKey = format(selectedDayForView, "yyyy-MM-dd");
+              const dayEvents = calendarEvents[dayKey] || [];
+              console.log(`🗓️ Selected Day View - ${dayKey}: Found ${dayEvents.length} events`);
+              
+              if (dayEvents.length === 0) {
+                return (
+                  <div className="text-center py-4 text-gray-600">
+                    <div className="text-2xl mb-2">📅</div>
+                    <p className="text-sm">No events on this day</p>
+                    <button
+                      onClick={() => {
+                        setNewEvent(prev => ({
+                          ...prev,
+                          date: dayKey
+                        }));
+                        setShowPopup(true);
+                      }}
+                      className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded"
+                    >
+                      + Add Event
+                    </button>
                   </div>
-                )}
-
-                {/* Members List - Vertical Layout */}
-                <div className="mt-3">
-                  <div className="text-xs font-medium text-gray-700 mb-2">Members:</div>
-                  <div className="space-y-1">
-                    {group.members && group.members.map((member) => (
-                      <div key={member.username} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
-                            {(member.username || 'U').charAt(0).toUpperCase()}
+                );
+              }
+              
+              return (
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm text-gray-600">
+                      {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setNewEvent(prev => ({
+                          ...prev,
+                          date: dayKey
+                        }));
+                        setShowPopup(true);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm font-medium rounded flex items-center gap-1"
+                    >
+                      <span className="text-sm">+</span>
+                      Add
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {dayEvents.map((event, idx) => (
+                      <div key={idx} className="bg-white rounded p-3 border border-gray-200 hover:border-gray-300">
+                        <div className="flex items-start gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0"
+                            style={{ backgroundColor: event.color }}
+                          ></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="font-medium text-gray-900 text-sm truncate">
+                                {event.title}
+                              </h5>
+                              {event.google_event_id && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded flex-shrink-0">
+                                  Google
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="text-xs text-gray-600 mb-1">
+                              {formatTimeRange(event.start, event.end_time)}
+                            </div>
+                            
+                            {event.location && (
+                              <div className="text-xs text-gray-500">
+                                📍 {event.location}
+                              </div>
+                            )}
                           </div>
-                          <span className="text-gray-800">{String(member.username || 'Unknown User').trim()}</span>
-                        </div>
-                        <div className="flex gap-1">
-                          {member.is_creator === 1 && (
-                            <span className="text-xs bg-red-100 text-red-800 px-1 py-0.5 rounded">
-                              Creator
-                            </span>
-                          )}
-                          {member.is_admin === 1 && member.is_creator !== 1 && (
-                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded">
-                              Admin
-                            </span>
-                          )}
-                          {member.is_admin !== 1 && member.is_creator !== 1 && (
-                            <span className="text-xs bg-gray-100 text-gray-800 px-1 py-0.5 rounded">
-                              Member
-                            </span>
-                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            ))}
-            
-            <button
-              onClick={() => setShowJoinGroupModal(true)}
-              className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium rounded"
-            >
-              Join Group by Key
-            </button>
+              );
+            })()}
           </div>
+        )}
+
+        {/* Events List Header */}
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            {viewFilter === 'today' && 'Today\'s Events'}
+            {viewFilter === 'upcoming' && 'Upcoming Events'}
+          </h3>
+          {Object.keys(groupedEvents).length > 0 && (
+            <p className="text-sm text-gray-600">
+              {Object.values(groupedEvents).reduce((sum, events) => sum + events.length, 0)} event(s) found
+            </p>
+          )}
         </div>
 
-        <div className="md:col-span-2 bg-white shadow rounded-lg p-4">
-          <div className="flex justify-between mb-4">
+        {Object.keys(groupedEvents).length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-4xl mb-4">📅</div>
+            <h4 className="text-lg font-medium mb-2">No events found</h4>
+            <p className="text-sm mb-4">
+              {viewFilter === 'today' && 'No events scheduled for today.'}
+              {viewFilter === 'upcoming' && 'No upcoming events scheduled.'}
+            </p>
             <button
               onClick={handleCreateEvent}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg"
             >
-              <span className="text-base">+</span>
-              Create Event
+              Create Your First Event
             </button>
-            
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-              {/* View Filter Buttons */}
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => setViewFilter('today')}
-                  className={`px-4 py-2 text-sm font-medium rounded ${
-                    viewFilter === 'today'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setViewFilter('upcoming')}
-                  className={`px-4 py-2 text-sm font-medium rounded ${
-                    viewFilter === 'upcoming'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Upcoming
-                </button>
-              </div>
-              
-              {/* Google Calendar Connection */}
-              <div className="flex gap-2">
-                {isGoogleConnected ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-600 text-sm">✓ Google Calendar Connected</span>
-                    <button
-                      onClick={async () => {
-                        const token = localStorage.getItem("token");
-                        if (!token) return;
-                        
-                        try {
-                          const res = await fetch(`${API_URL}/auth/google/disconnect`, {
-                            method: "POST",
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          
-                          if (res.ok) {
-                            setIsGoogleConnected(false);
-                            // Refresh events to remove Google Calendar events
-                            fetch(`${API_URL}/events`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            })
-                              .then((res) => res.json())
-                              .then((data) => {
-                                if (Array.isArray(data)) {
-                                  setEvents(data);
-                                  console.log("Events refreshed after Google Calendar disconnect");
-                                }
-                              })
-                              .catch((err) => console.error("Failed to refresh events after disconnect", err));
-                            console.log("Google Calendar disconnected successfully");
-                          } else {
-                            console.error("Failed to disconnect Google Calendar");
-                          }
-                        } catch (error) {
-                          console.error("Error disconnecting Google Calendar:", error);
-                        }
-                      }}
-                      className="border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white px-4 py-2 text-sm font-medium rounded transition-colors"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleConnectGoogle}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium rounded"
-                  >
-                    Connect Google Calendar
-                  </button>
+          </div>
+        ) : viewFilter === 'today' ? (
+          // Today view - group by day
+          Object.entries(groupedEvents).map(([day, evts]) => (
+            <div key={day} className="mb-4">
+              <div className="schedule-date">
+                {format(new Date(day), "dd EEE MMM")}
+                {isSameDay(new Date(day), startOfToday()) && (
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Today
+                  </span>
                 )}
               </div>
+              <div className="border-b border-gray-200 mb-2" />
+              <ul className="schedule-list">
+                {evts.map((event, idx) => (
+                  <li key={idx} className="rbc-agenda-event-cell">
+                    <span
+                      className="dot"
+                      style={{ backgroundColor: event.color }}
+                    ></span>
+                    <div className="content">
+                      <div className="title font-medium text-gray-900 flex items-center gap-2">
+                        {event.title}
+                        {event.google_event_id && (
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            Google
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {formatTimeRange(event.start, event.end_time)}
+                        {event.location && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            📍 {event.location}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-
-          {/* Selected Day Events Section */}
-          {selectedDayForView && (
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-semibold text-gray-900">
-                  {format(selectedDayForView, "EEEE, MMMM d")}
-                </h4>
-                <button
-                  onClick={() => {
-                    setSelectedDayForView(null);
-                    setSelectedCalendarDay(null);
-                  }}
-                  className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                >
-                  ×
-                </button>
-              </div>
+          ))
+        ) : (
+          // Upcoming view - group by month
+          Object.entries(groupedEvents)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([month, evts]) => {
+              // Sort events within each month by date
+              const sortedEvents = evts.sort((a, b) => new Date(a.start) - new Date(b.start));
               
-              {(() => {
-                const dayKey = format(selectedDayForView, "yyyy-MM-dd");
-                const dayEvents = calendarEvents[dayKey] || [];
-                console.log(`🗓️ Selected Day View - ${dayKey}: Found ${dayEvents.length} events`);
-                
-                if (dayEvents.length === 0) {
-                  return (
-                    <div className="text-center py-4 text-gray-600">
-                      <div className="text-2xl mb-2">📅</div>
-                      <p className="text-sm">No events on this day</p>
-                      <button
-                        onClick={() => {
-                          setNewEvent(prev => ({
-                            ...prev,
-                            date: dayKey
-                          }));
-                          setShowPopup(true);
-                        }}
-                        className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded"
-                      >
-                        + Add Event
-                      </button>
-                    </div>
-                  );
-                }
-                
-                return (
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <p className="text-sm text-gray-600">
-                        {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
-                      </p>
-                      <button
-                        onClick={() => {
-                          setNewEvent(prev => ({
-                            ...prev,
-                            date: dayKey
-                          }));
-                          setShowPopup(true);
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm font-medium rounded flex items-center gap-1"
-                      >
-                        <span className="text-sm">+</span>
-                        Add
-                      </button>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {dayEvents.map((event, idx) => (
-                        <div key={idx} className="bg-white rounded p-3 border border-gray-200 hover:border-gray-300">
-                          <div className="flex items-start gap-2">
-                            <div
-                              className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0"
-                              style={{ backgroundColor: event.color }}
-                            ></div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h5 className="font-medium text-gray-900 text-sm truncate">
-                                  {event.title}
-                                </h5>
-                                {event.google_event_id && (
-                                  <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded flex-shrink-0">
-                                    Google
-                                  </span>
-                                )}
-                              </div>
-                              
-                              <div className="text-xs text-gray-600 mb-1">
-                                {formatTimeRange(event.start, event.end_time)}
-                              </div>
-                              
-                              {event.location && (
-                                <div className="text-xs text-gray-500">
-                                  📍 {event.location}
-                                </div>
+              return (
+                <div key={month} className="mb-6">
+                  {/* Month Header */}
+                  <div className="bg-gray-50 px-4 py-3 rounded-lg mb-4">
+                    <h4 className="text-lg font-semibold text-gray-800">
+                      {format(new Date(month + '-01'), "MMMM yyyy")}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {sortedEvents.length} event{sortedEvents.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  
+                  {/* Events for this month */}
+                  <div className="space-y-3 ml-2">
+                    {sortedEvents.map((event, idx) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="w-4 h-4 rounded-full mt-1 flex-shrink-0"
+                            style={{ backgroundColor: event.color }}
+                          ></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="font-medium text-gray-900">
+                                {event.title}
+                              </h5>
+                              {event.google_event_id && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  Google
+                                </span>
                               )}
                             </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* Events List Header */}
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {viewFilter === 'today' && 'Today\'s Events'}
-              {viewFilter === 'upcoming' && 'Upcoming Events'}
-            </h3>
-            {Object.keys(groupedEvents).length > 0 && (
-              <p className="text-sm text-gray-600">
-                {Object.values(groupedEvents).reduce((sum, events) => sum + events.length, 0)} event(s) found
-              </p>
-            )}
-          </div>
-
-          {Object.keys(groupedEvents).length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <div className="text-4xl mb-4">📅</div>
-              <h4 className="text-lg font-medium mb-2">No events found</h4>
-              <p className="text-sm mb-4">
-                {viewFilter === 'today' && 'No events scheduled for today.'}
-                {viewFilter === 'upcoming' && 'No upcoming events scheduled.'}
-              </p>
-              <button
-                onClick={handleCreateEvent}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg"
-              >
-                Create Your First Event
-              </button>
-            </div>
-          ) : viewFilter === 'today' ? (
-            // Today view - group by day
-            Object.entries(groupedEvents).map(([day, evts]) => (
-              <div key={day} className="mb-4">
-                <div className="schedule-date">
-                  {format(new Date(day), "dd EEE MMM")}
-                  {isSameDay(new Date(day), startOfToday()) && (
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                      Today
-                    </span>
-                  )}
-                </div>
-                <div className="border-b border-gray-200 mb-2" />
-                <ul className="schedule-list">
-                  {evts.map((event, idx) => (
-                    <li key={idx} className="rbc-agenda-event-cell">
-                      <span
-                        className="dot"
-                        style={{ backgroundColor: event.color }}
-                      ></span>
-                      <div className="content">
-                        <div className="title font-medium text-gray-900 flex items-center gap-2">
-                          {event.title}
-                          {event.google_event_id && (
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                              Google
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {formatTimeRange(event.start, event.end_time)}
-                          {event.location && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              📍 {event.location}
+                            
+                            <div className="text-sm text-gray-600 mb-1">
+                              {formatDateWithOrdinal(new Date(event.start))} at {formatTimeRange(event.start, event.end_time)}
                             </div>
-                          )}
+                            
+                            {event.location && (
+                              <div className="text-sm text-gray-500">
+                                📍 {event.location}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))
-          ) : (
-            // Upcoming view - group by month
-            Object.entries(groupedEvents)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([month, evts]) => {
-                // Sort events within each month by date
-                const sortedEvents = evts.sort((a, b) => new Date(a.start) - new Date(b.start));
-                
-                return (
-                  <div key={month} className="mb-6">
-                    {/* Month Header */}
-                    <div className="bg-gray-50 px-4 py-3 rounded-lg mb-4">
-                      <h4 className="text-lg font-semibold text-gray-800">
-                        {format(new Date(month + '-01'), "MMMM yyyy")}
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        {sortedEvents.length} event{sortedEvents.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                    
-                    {/* Events for this month */}
-                    <div className="space-y-3 ml-2">
-                      {sortedEvents.map((event, idx) => (
-                        <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
-                          <div className="flex items-start gap-3">
-                            <div
-                              className="w-4 h-4 rounded-full mt-1 flex-shrink-0"
-                              style={{ backgroundColor: event.color }}
-                            ></div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h5 className="font-medium text-gray-900">
-                                  {event.title}
-                                </h5>
-                                {event.google_event_id && (
-                                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    Google
-                                  </span>
-                                )}
-                              </div>
-                              
-                              <div className="text-sm text-gray-600 mb-1">
-                                {formatDateWithOrdinal(new Date(event.start))} at {formatTimeRange(event.start, event.end_time)}
-                              </div>
-                              
-                              {event.location && (
-                                <div className="text-sm text-gray-500">
-                                  📍 {event.location}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </div>
-                );
-              })
-          )}
-        </div>
+                </div>
+              );
+            })
+        )}
       </div>
 
       {showPopup && (
@@ -1425,234 +1042,6 @@ const MyCalendarPage = () => {
           </div>
         </div>
       )}
-
-      {/* Join Group Modal */}
-      {showJoinGroupModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Join Group</h3>
-              <button
-                onClick={() => {
-                  setShowJoinGroupModal(false);
-                  setJoinKey("");
-                  setJoinMessage("");
-                }}
-                className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter Group Join Key
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. ABC123XY"
-                className="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={joinKey}
-                onChange={(e) => setJoinKey(e.target.value.toUpperCase())}
-                maxLength={10}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Ask a group creator for their join key
-              </p>
-            </div>
-
-            {joinMessage && (
-              <div className="mb-4 p-3 rounded bg-gray-50 text-sm">
-                {joinMessage}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowJoinGroupModal(false);
-                  setJoinKey("");
-                  setJoinMessage("");
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleJoinGroup}
-                disabled={!joinKey.trim()}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-6 py-2 text-sm font-medium rounded-lg"
-              >
-                Join Group
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Group Settings Modal */}
-      {showMembersModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">Group Settings</h3>
-              <button
-                onClick={() => {
-                  setShowMembersModal(false);
-                  setEditingGroupName(false);
-                  setNewGroupName("");
-                  setUserIsCreator(false);
-                }}
-                className="px-2 py-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Group Name Section */}
-            {Boolean(userIsAdmin) && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-800">Group Name</h4>
-                  {!Boolean(editingGroupName) && (
-                    <button
-                      onClick={() => {
-                        setEditingGroupName(true);
-                        const currentGroup = groups.find(g => g.group_id === selectedGroupId);
-                        setNewGroupName(currentGroup?.group_name || "");
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm font-medium rounded"
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-                {editingGroupName ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      className="flex-1 text-sm border border-gray-300 px-2 py-1 rounded focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter group name"
-                    />
-                    <button
-                      onClick={() => updateGroupName(selectedGroupId, newGroupName)}
-                      disabled={!newGroupName.trim()}
-                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-4 py-2 text-sm font-medium rounded"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingGroupName(false);
-                        setNewGroupName("");
-                      }}
-                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 text-sm font-medium rounded"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-600">
-                    {groups.find(g => g.group_id === selectedGroupId)?.group_name || "Unnamed Group"}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {groupMembers.map((member) => (
-                <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
-                      {member.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-medium">{member.username}</div>
-                      <div className="text-sm text-gray-500">{member.email}</div>
-                    </div>
-                    <div className="flex gap-1">
-                      {Boolean(member.is_creator === 1) && (
-                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
-                          Creator
-                        </span>
-                      )}
-                      {Boolean(member.is_admin === 1 && member.is_creator !== 1) && (
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                          Admin
-                        </span>
-                      )}
-                      {Boolean(member.is_admin !== 1 && member.is_creator !== 1) && (
-                        <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
-                          Member
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {Boolean(userIsAdmin && member.is_creator !== 1) && (
-                    <div className="flex gap-2">
-                      {member.is_admin !== 1 ? (
-                        <button
-                          onClick={() => performAdminAction(member.id, "promote")}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium rounded"
-                        >
-                          Make Admin
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => performAdminAction(member.id, "demote")}
-                          className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 text-sm font-medium rounded"
-                        >
-                          Remove Admin
-                        </button>
-                      )}
-                      <button
-                        onClick={() => performAdminAction(member.id, "kick")}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-medium rounded"
-                      >
-                        Kick
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {!Boolean(userIsAdmin) && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Only group admins can manage members. Contact an admin if you need to make changes.
-                </p>
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-between">
-              {Boolean(userIsCreator) && (
-                <button
-                  onClick={() => deleteGroup(selectedGroupId)}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-medium rounded"
-                >
-                  Delete Group
-                </button>
-              )}
-              <div className={Boolean(userIsCreator) ? "" : "ml-auto"}>
-                <button
-                  onClick={() => {
-                    setShowMembersModal(false);
-                    setUserIsCreator(false);
-                  }}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 text-sm font-medium rounded"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

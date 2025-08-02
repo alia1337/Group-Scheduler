@@ -10,11 +10,14 @@ import LoginForm from "./LoginForm";
 import RegisterForm from "./RegisterForm";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AuthRedirect from "./components/AuthRedirect";
+import Layout from "./components/Layout";
+import { AppProvider } from "./contexts/AppContext";
 
 function App() {
   return (
-    <Router>
-      <Routes>
+    <AppProvider>
+      <Router>
+        <Routes>
         <Route 
           path="/" 
           element={
@@ -43,7 +46,9 @@ function App() {
           path="/calendar" 
           element={
             <ProtectedRoute>
-              <MyCalendarPage />
+              <Layout>
+                <MyCalendarPage />
+              </Layout>
             </ProtectedRoute>
           } 
         />
@@ -51,7 +56,9 @@ function App() {
           path="/schedule" 
           element={
             <ProtectedRoute>
-              <MyScheduleView />
+              <Layout>
+                <MyScheduleView />
+              </Layout>
             </ProtectedRoute>
           } 
         />
@@ -59,7 +66,9 @@ function App() {
           path="/new-group" 
           element={
             <ProtectedRoute>
-              <NewGroupPage />
+              <Layout>
+                <NewGroupPage />
+              </Layout>
             </ProtectedRoute>
           } 
         />
@@ -67,12 +76,15 @@ function App() {
           path="/personal-calendar" 
           element={
             <ProtectedRoute>
-              <PersonalCalendarPage />
+              <Layout>
+                <PersonalCalendarPage />
+              </Layout>
             </ProtectedRoute>
           } 
         />
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
+    </AppProvider>
   );
 }
 
