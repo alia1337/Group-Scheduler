@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS events (
     color VARCHAR(7) DEFAULT '#1a73e8',
     user_id INT NOT NULL,
     group_id INT,
+    google_event_id VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS group_members (
 -- Create indexes for better performance
 CREATE INDEX idx_events_user_id ON events(user_id);
 CREATE INDEX idx_events_start ON events(start);
+CREATE INDEX idx_events_google_event_id ON events(google_event_id);
 CREATE INDEX idx_friends_user_id ON friends(user_id);
 CREATE INDEX idx_group_join_key ON group_list(join_key);
 CREATE INDEX idx_group_members_group_id ON group_members(group_id);

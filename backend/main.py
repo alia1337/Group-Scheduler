@@ -96,6 +96,7 @@ class EventOut(BaseModel):
     location: str | None = None
     color: str
     group_id: int | None = None
+    google_event_id: str | None = None
 
     class Config:
         from_attributes = True
@@ -533,11 +534,11 @@ def get_events(user_id: int = Depends(get_current_user)):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
-        today = datetime.utcnow()
-        end = datetime(today.year, 12, 31)
-        cursor.execute("SELECT * FROM events WHERE user_id = %s AND start BETWEEN %s AND %s",
-                       (user_id, today, end))
-        return cursor.fetchall()
+        # Get all events for the user - let frontend handle date filtering to avoid timezone issues
+        cursor.execute("SELECT * FROM events WHERE user_id = %s", (user_id,))
+        events = cursor.fetchall()
+        print(f"Backend: Found {len(events)} events for user {user_id}")
+        return events
     finally:
         cursor.close()
         db.close()
@@ -649,6 +650,15 @@ def google_callback(code: str, state: str):
             db.close()
         
         print(f"Successfully stored Google OAuth tokens for user {user_id}")
+        
+        # Trigger Google Calendar sync after successful connection
+        try:
+            sync_google_calendar_events(user_id)
+            print(f"Initial Google Calendar sync completed for user {user_id}")
+        except Exception as sync_error:
+            print(f"Error during initial sync for user {user_id}: {sync_error}")
+            # Don't fail the OAuth flow if sync fails
+        
         return RedirectResponse(url="http://localhost:3000/calendar?connected=true")
         
     except Exception as e:
@@ -657,8 +667,8 @@ def google_callback(code: str, state: str):
         traceback.print_exc()
         return RedirectResponse(url="http://localhost:3000/calendar?error=auth_failed")
 
-@app.get("/auth/google/events")
-def get_google_calendar_events(user_id: int = Depends(get_current_user)):
+def sync_google_calendar_events(user_id: int):
+    """Sync Google Calendar events to the database"""
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
@@ -666,7 +676,8 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
         user = cursor.fetchone()
         
         if not user or not user.get('google_access_token'):
-            raise HTTPException(status_code=404, detail="Google Calendar not connected")
+            print(f"No Google Calendar access token for user {user_id}")
+            return
         
         from google.oauth2.credentials import Credentials
         
@@ -681,12 +692,11 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
         service = build('calendar', 'v3', credentials=credentials)
         
         # Fetch events from start of current year to end of next year
-        # This ensures we get past and future events
         current_year = datetime.now().year
         start_of_year = datetime(current_year, 1, 1).isoformat() + 'Z'
         end_of_next_year = datetime(current_year + 1, 12, 31, 23, 59, 59).isoformat() + 'Z'
         
-        print(f"Fetching Google Calendar events from {start_of_year} to {end_of_next_year}")
+        print(f"Syncing Google Calendar events for user {user_id} from {start_of_year} to {end_of_next_year}")
         
         events_result = service.events().list(
             calendarId='primary',
@@ -698,27 +708,105 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
         ).execute()
         
         events = events_result.get('items', [])
-        
-        formatted_events = []
-        print(f"Found {len(events)} Google Calendar events")
+        synced_count = 0
+        skipped_count = 0
         
         for event in events:
+            google_event_id = event.get('id')
             start = event['start'].get('dateTime', event['start'].get('date'))
+            end_time = event['end'].get('dateTime', event['end'].get('date')) if 'end' in event else None
             event_title = event.get('summary', 'No Title')
-            print(f"Google event: {event_title} on {start}")
+            location = event.get('location', '')
             
+            # Check if event already exists
+            cursor.execute("SELECT id FROM events WHERE google_event_id = %s", (google_event_id,))
+            existing_event = cursor.fetchone()
+            
+            if existing_event:
+                print(f"Skipping existing Google event: {event_title}")
+                skipped_count += 1
+                continue
+            
+            # Parse datetime strings to datetime objects
+            try:
+                # Handle both datetime and date formats
+                if 'T' in start:
+                    start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                else:
+                    start_dt = datetime.strptime(start, '%Y-%m-%d')
+                
+                end_dt = None
+                if end_time:
+                    if 'T' in end_time:
+                        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    else:
+                        end_dt = datetime.strptime(end_time, '%Y-%m-%d')
+                
+                # Insert new Google event into database
+                cursor.execute("""
+                    INSERT INTO events (title, start, end_time, location, color, user_id, google_event_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (event_title, start_dt, end_dt, location, '#4285f4', user_id, google_event_id))
+                
+                synced_count += 1
+                print(f"Synced Google event: {event_title} on {start}")
+                
+            except Exception as parse_error:
+                print(f"Error parsing event {event_title}: {parse_error}")
+                continue
+        
+        db.commit()
+        print(f"Google Calendar sync completed for user {user_id}: {synced_count} new events, {skipped_count} skipped")
+        
+    except Exception as e:
+        print(f"Error syncing Google Calendar events for user {user_id}: {e}")
+        db.rollback()
+    finally:
+        cursor.close()
+        db.close()
+
+@app.post("/auth/google/sync")
+def sync_google_calendar(user_id: int = Depends(get_current_user)):
+    """Manually trigger Google Calendar sync"""
+    try:
+        sync_google_calendar_events(user_id)
+        return {"message": "Google Calendar sync completed successfully"}
+    except Exception as e:
+        print(f"Error in manual sync: {e}")
+        raise HTTPException(status_code=500, detail="Failed to sync Google Calendar")
+
+@app.get("/auth/google/events")
+def get_google_calendar_events(user_id: int = Depends(get_current_user)):
+    """Legacy endpoint - now returns events from database instead of Google API"""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Get Google Calendar events from database
+        cursor.execute("""
+            SELECT id, title, start, end_time, location, color, google_event_id
+            FROM events 
+            WHERE user_id = %s AND google_event_id IS NOT NULL
+        """, (user_id,))
+        
+        events = cursor.fetchall()
+        
+        formatted_events = []
+        for event in events:
             formatted_events.append({
-                'id': event.get('id'),
-                'title': event_title,
-                'start': start,
+                'id': event['google_event_id'],  # Use Google event ID for compatibility
+                'title': event['title'],
+                'start': event['start'].isoformat() if event['start'] else None,
+                'end_time': event['end_time'].isoformat() if event['end_time'] else None,
+                'location': event['location'],
+                'color': event['color'],
                 'source': 'google'
             })
         
-        print(f"Returning {len(formatted_events)} formatted Google Calendar events")
+        print(f"Returning {len(formatted_events)} Google Calendar events from database for user {user_id}")
         return formatted_events
         
     except Exception as e:
-        print(f"Error fetching Google Calendar events: {e}")
+        print(f"Error fetching Google Calendar events from database: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch Google Calendar events")
     finally:
         cursor.close()
@@ -729,6 +817,11 @@ def disconnect_google_calendar(user_id: int = Depends(get_current_user)):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
+        # Remove Google Calendar events from database
+        cursor.execute("DELETE FROM events WHERE user_id = %s AND google_event_id IS NOT NULL", (user_id,))
+        deleted_events = cursor.rowcount
+        
+        # Disconnect Google Calendar
         cursor.execute("""
             UPDATE users SET 
             google_access_token = NULL,
@@ -737,8 +830,9 @@ def disconnect_google_calendar(user_id: int = Depends(get_current_user)):
             WHERE id = %s
         """, (user_id,))
         db.commit()
-        print(f"Disconnected Google Calendar for user {user_id}")
-        return {"message": "Google Calendar disconnected successfully"}
+        
+        print(f"Disconnected Google Calendar for user {user_id}, removed {deleted_events} Google events")
+        return {"message": f"Google Calendar disconnected successfully. Removed {deleted_events} Google events."}
     finally:
         cursor.close()
         db.close()

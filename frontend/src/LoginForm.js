@@ -41,7 +41,7 @@ function LoginForm() {
 
         // Success message and redirect
         setMessage("Login successful!");
-        navigate("/calendar");
+        navigate("/personal-calendar");
       } else {
         setMessage(data.detail || "Login failed. Please check your credentials.");
       }

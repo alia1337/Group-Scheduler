@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import HomePage from "./HomePage";
 import MyCalendarPage from "./MyCalendarPage";
+import PersonalCalendarPage from "./PersonalCalendarPage";
 import MyScheduleView from "./MyScheduleView";
 import "./App.css";
 import NewGroupPage from "./NewGroupPage";
@@ -59,6 +60,14 @@ function App() {
           element={
             <ProtectedRoute>
               <NewGroupPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/personal-calendar" 
+          element={
+            <ProtectedRoute>
+              <PersonalCalendarPage />
             </ProtectedRoute>
           } 
         />

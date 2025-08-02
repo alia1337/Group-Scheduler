@@ -95,3 +95,29 @@
 .react-calendar__tile--selected abbr {
   color: white !important;
 }
+
+/* Fix calendar tile sizing to maintain uniformity */
+.react-calendar__tile {
+  height: 48px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  position: relative !important;
+  padding: 4px !important;
+}
+
+/* Position the date number at the top */
+.react-calendar__tile abbr {
+  line-height: 1 !important;
+  margin-bottom: 2px !important;
+}
+
+/* Position event dots at the bottom of the tile */
+.react-calendar__tile > div {
+  position: absolute !important;
+  bottom: 2px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin: 0 !important;
+}
