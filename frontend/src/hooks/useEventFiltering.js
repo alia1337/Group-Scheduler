@@ -87,23 +87,13 @@ export const useEventFiltering = (events, options = {}) => {
   const getGroupedEvents = (viewFilter) => {
     const eventsInRange = getEventsInRange(viewFilter);
     
-    if (viewFilter === 'today') {
-      // Group by day for today view
-      return eventsInRange.reduce((acc, event) => {
-        const day = format(new Date(event.start), "yyyy-MM-dd");
-        if (!acc[day]) acc[day] = [];
-        acc[day].push(event);
-        return acc;
-      }, {});
-    } else {
-      // Group by month for upcoming view
-      return eventsInRange.reduce((acc, event) => {
-        const month = format(new Date(event.start), "yyyy-MM");
-        if (!acc[month]) acc[month] = [];
-        acc[month].push(event);
-        return acc;
-      }, {});
-    }
+    // Group by day for both today and upcoming views
+    return eventsInRange.reduce((acc, event) => {
+      const day = format(new Date(event.start), "yyyy-MM-dd");
+      if (!acc[day]) acc[day] = [];
+      acc[day].push(event);
+      return acc;
+    }, {});
   };
 
   // Get the optimal view filter based on available events

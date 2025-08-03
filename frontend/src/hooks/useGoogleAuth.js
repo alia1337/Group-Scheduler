@@ -56,6 +56,14 @@ export const useGoogleAuth = (refreshEvents) => {
       }
       // Clean up URL parameters
       window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Force a refresh of events after successful connection
+      setTimeout(() => {
+        if (refreshEvents) {
+          console.log("Forcing refresh of events after Google Calendar connection");
+          refreshEvents();
+        }
+      }, 1000); // Small delay to ensure backend sync is complete
     } else if (urlParams.get('error') === 'auth_failed') {
       alert('Google Calendar connection failed. Please try again.');
       // Clean up URL parameters
@@ -128,9 +136,36 @@ export const useGoogleAuth = (refreshEvents) => {
     }
   };
 
+  const syncGoogleCalendar = async () => {
+    if (!checkAuthAndRedirect()) return;
+
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API_URL}/auth/google/sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      if (res.ok) {
+        console.log("Google Calendar sync triggered successfully");
+        // Refresh events after sync
+        setTimeout(() => {
+          if (refreshEvents) refreshEvents();
+        }, 1000);
+      } else {
+        console.error("Failed to sync Google Calendar");
+      }
+    } catch (error) {
+      console.error("Error syncing Google Calendar:", error);
+    }
+  };
+
   return {
     isGoogleConnected,
     connectGoogle,
-    disconnectGoogle
+    disconnectGoogle,
+    syncGoogleCalendar
   };
 };

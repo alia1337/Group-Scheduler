@@ -755,8 +755,8 @@ def sync_google_calendar_events(user_id: int):
             event_title = event.get('summary', 'No Title')
             location = event.get('location', '')
             
-            # Check if event already exists
-            cursor.execute("SELECT id FROM events WHERE google_event_id = %s", (google_event_id,))
+            # Check if event already exists for this user
+            cursor.execute("SELECT id FROM events WHERE google_event_id = %s AND user_id = %s", (google_event_id, user_id))
             existing_event = cursor.fetchone()
             
             if existing_event:
@@ -873,3 +873,181 @@ def disconnect_google_calendar(user_id: int = Depends(get_current_user)):
     finally:
         cursor.close()
         db.close()
+
+class AvailabilityRequest(BaseModel):
+    start_time: str  # HH:MM format
+    end_time: str    # HH:MM format
+    days_of_week: list[int]  # 0=Sunday, 1=Monday, etc.
+    weeks_ahead: int = 4
+    min_continuous_hours: int | None = None  # Optional: minimum continuous hours required
+
+@app.post("/groups/{group_id}/availability")
+def calculate_group_availability(
+    group_id: int, 
+    request: AvailabilityRequest,
+    user_id: int = Depends(get_current_user)
+):
+    """Calculate when group members are available for a given time range"""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if user is a member of the group
+        cursor.execute("""
+            SELECT 1 FROM group_members 
+            WHERE group_id = %s AND user_id = %s
+        """, (group_id, user_id))
+        
+        if not cursor.fetchone():
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        
+        # Get all group members
+        cursor.execute("""
+            SELECT u.id, u.username 
+            FROM users u
+            JOIN group_members gm ON u.id = gm.user_id
+            WHERE gm.group_id = %s
+        """, (group_id,))
+        
+        group_members = cursor.fetchall()
+        total_members = len(group_members)
+        
+        if total_members == 0:
+            return {}
+        
+        # Generate dates for the next few weeks
+        from datetime import datetime, timedelta
+        import calendar
+        
+        availability = {}
+        today = datetime.now().date()
+        
+        for week_offset in range(request.weeks_ahead):
+            # Check each day in the week
+            for days_ahead in range(7 * week_offset, 7 * (week_offset + 1)):
+                check_date = today + timedelta(days=days_ahead)
+                day_of_week = check_date.weekday()  # 0=Monday, 6=Sunday
+                
+                # Convert to our format (0=Sunday, 1=Monday, etc.)
+                day_of_week_sunday_first = (day_of_week + 1) % 7
+                
+                # Skip if not in selected days
+                if day_of_week_sunday_first not in request.days_of_week:
+                    continue
+                
+                date_str = check_date.strftime('%Y-%m-%d')
+                
+                if request.min_continuous_hours:
+                    # For continuous time blocks, we need more complex logic
+                    available_count = calculate_continuous_availability(
+                        cursor, group_members, date_str, 
+                        request.start_time, request.end_time, 
+                        request.min_continuous_hours
+                    )
+                else:
+                    # Count available members for this date/time (any time in range)
+                    available_count = 0
+                    
+                    for member in group_members:
+                        # Check if member has any conflicting events
+                        cursor.execute("""
+                            SELECT COUNT(*) as conflict_count
+                            FROM events 
+                            WHERE user_id = %s 
+                            AND DATE(start) = %s
+                            AND (
+                                (TIME(start) < %s AND TIME(COALESCE(end_time, start)) > %s) OR
+                                (TIME(start) >= %s AND TIME(start) < %s) OR
+                                (TIME(COALESCE(end_time, start)) > %s AND TIME(COALESCE(end_time, start)) <= %s)
+                            )
+                        """, (
+                            member['id'], 
+                            date_str,
+                            request.end_time, request.start_time,  # event ends after start or starts before end
+                            request.start_time, request.end_time,  # event starts within range
+                            request.start_time, request.end_time   # event ends within range
+                        ))
+                        
+                        conflict_count = cursor.fetchone()['conflict_count']
+                        
+                        if conflict_count == 0:
+                            available_count += 1
+                
+                availability[date_str] = available_count
+        
+        return availability
+        
+    finally:
+        cursor.close()
+        db.close()
+
+def calculate_continuous_availability(cursor, group_members, date_str, start_time, end_time, min_hours):
+    """Calculate availability for continuous time blocks"""
+    from datetime import datetime, timedelta
+    
+    # Convert times to datetime objects for easier manipulation
+    start_dt = datetime.strptime(start_time, '%H:%M').time()
+    end_dt = datetime.strptime(end_time, '%H:%M').time()
+    
+    # Create time slots (15-minute intervals)
+    slots = []
+    current = datetime.combine(datetime.today(), start_dt)
+    end_datetime = datetime.combine(datetime.today(), end_dt)
+    
+    while current < end_datetime:
+        slots.append(current.time())
+        current += timedelta(minutes=15)
+    
+    # For each member, find their availability across all slots
+    member_availability = {}
+    
+    for member in group_members:
+        # Get all events for this member on this date
+        cursor.execute("""
+            SELECT TIME(start) as start_time, TIME(COALESCE(end_time, start)) as end_time
+            FROM events 
+            WHERE user_id = %s AND DATE(start) = %s
+            ORDER BY start
+        """, (member['id'], date_str))
+        
+        events = cursor.fetchall()
+        member_free_slots = []
+        
+        # Check each slot for availability
+        for slot in slots:
+            is_free = True
+            for event in events:
+                event_start = event['start_time']
+                event_end = event['end_time']
+                
+                # Check if slot conflicts with event
+                slot_end = (datetime.combine(datetime.today(), slot) + timedelta(minutes=15)).time()
+                
+                if (slot < event_end and slot_end > event_start):
+                    is_free = False
+                    break
+            
+            member_free_slots.append(is_free)
+        
+        member_availability[member['id']] = member_free_slots
+    
+    # Find continuous blocks that meet the minimum hours requirement
+    required_slots = min_hours * 4  # 15-minute slots
+    max_available = 0
+    
+    # Check each possible continuous block
+    for start_idx in range(len(slots) - required_slots + 1):
+        available_count = 0
+        
+        for member_id in member_availability:
+            # Check if this member is free for the entire block
+            is_free_for_block = all(
+                member_availability[member_id][i] 
+                for i in range(start_idx, start_idx + required_slots)
+            )
+            
+            if is_free_for_block:
+                available_count += 1
+        
+        max_available = max(max_available, available_count)
+    
+    return max_available

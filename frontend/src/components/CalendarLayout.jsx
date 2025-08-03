@@ -37,6 +37,8 @@ const CalendarLayout = ({
   createButtonText = "Create Event",
   showLegend = false,
   legendOptions = {},
+  isGroupView = false,
+  onFindFreeTime = null,
   
   // Layout wrapper (for PersonalCalendar vs MyCalendar difference)
   children
@@ -65,6 +67,8 @@ const CalendarLayout = ({
           setViewFilter={setViewFilter}
           refreshEvents={refreshEvents}
           createButtonText={createButtonText}
+          isGroupView={isGroupView}
+          onFindFreeTime={onFindFreeTime}
         />
 
         <SelectedDayView 
@@ -79,6 +83,7 @@ const CalendarLayout = ({
           viewFilter={viewFilter}
           groupedEvents={groupedEvents}
           onCreateEvent={onCreateEvent}
+          isGroupView={isGroupView}
         />
       </div>
 
