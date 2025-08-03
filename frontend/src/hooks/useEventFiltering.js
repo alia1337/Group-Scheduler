@@ -37,11 +37,9 @@ export const useEventFiltering = (events, options = {}) => {
           return event.group_id === null;
         
         case 'group':
-          // Show only group events
-          if (selectedGroupId) {
-            return event.group_id === parseInt(selectedGroupId);
-          }
-          return event.group_id !== null;
+          // For group calendars, show all events (the filtering is done by useGroupEvents)
+          // This case is now handled by the unified system via useGroupEvents hook
+          return true;
         
         case 'all':
         default:
@@ -108,35 +106,44 @@ export const useEventFiltering = (events, options = {}) => {
     }
   };
 
+  // Get the optimal view filter based on available events
+  const getOptimalViewFilter = () => {
+    const today = startOfToday();
+    
+    // Check for today's events
+    const todayEvents = filteredEventsByType.filter(event => {
+      const eventDate = new Date(event.start);
+      return isSameDay(eventDate, today);
+    });
+    
+    // If there are events today, prefer today view
+    if (todayEvents.length > 0) {
+      return 'today';
+    }
+    
+    // If no events today, check for upcoming events
+    const upcomingEvents = filteredEventsByType.filter(event => {
+      const eventDate = new Date(event.start);
+      return isAfter(eventDate, today);
+    });
+    
+    // Only switch to upcoming if there are actually upcoming events
+    if (upcomingEvents.length > 0) {
+      return 'upcoming';
+    }
+    
+    // If no events at all, default to today view (don't force upcoming)
+    return 'today';
+  };
+
   // Check for today's events and suggest switching to upcoming if none
   const checkTodayEvents = (viewFilter, setViewFilter) => {
     if (viewFilter !== 'today') return;
     
-    const today = startOfToday();
-    
-    if (events.length > 0) {
-      // Check for today's events
-      const todayEvents = filteredEventsByType.filter(event => {
-        const eventDate = new Date(event.start);
-        return isSameDay(eventDate, today);
-      });
-      
-      console.log('Today events found:', todayEvents.length);
-      
-      // If no events today, check for upcoming events
-      if (todayEvents.length === 0) {
-        const upcomingEvents = filteredEventsByType.filter(event => {
-          const eventDate = new Date(event.start);
-          return isAfter(eventDate, today);
-        });
-        
-        console.log('Upcoming events found:', upcomingEvents.length);
-        
-        if (upcomingEvents.length > 0) {
-          console.log('Switching to upcoming view');
-          setViewFilter('upcoming');
-        }
-      }
+    const optimalFilter = getOptimalViewFilter();
+    if (optimalFilter !== viewFilter) {
+      console.log(`Switching from ${viewFilter} to ${optimalFilter} view`);
+      setViewFilter(optimalFilter);
     }
   };
 
@@ -146,6 +153,7 @@ export const useEventFiltering = (events, options = {}) => {
     calendarEvents,
     getEventsInRange,
     getGroupedEvents,
+    getOptimalViewFilter,
     checkTodayEvents
   };
 };

@@ -86,6 +86,7 @@ class EventIn(BaseModel):
     location: str | None = None
     color: str
     user_id: int
+    group_id: int | None = None
     friend_emails: list[str] = []
 
 class EventOut(BaseModel):
@@ -329,9 +330,45 @@ def join_group(data: GroupJoin, user_id: int = Depends(get_current_user)):
         # Add user to group
         cursor.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", 
                       (group["id"], user_id))
+        
         db.commit()
         
         return {"message": f"Successfully joined group '{group['name']}'", "group_id": group["id"]}
+    finally:
+        cursor.close()
+        db.close()
+
+# Removed sync functions - groups now show live personal events instead of copies
+
+@app.get("/groups/{group_id}/events")
+def get_group_events(group_id: int, user_id: int = Depends(get_current_user)):
+    """Get all personal events from all group members (unified view)"""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Check if user is a member of the group
+        cursor.execute("""
+            SELECT 1 FROM group_members 
+            WHERE group_id = %s AND user_id = %s
+        """, (group_id, user_id))
+        
+        if not cursor.fetchone():
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        
+        # Get all personal events from all group members
+        # This includes personal events (group_id IS NULL) and Google Calendar events
+        cursor.execute("""
+            SELECT e.*, u.username as creator_username
+            FROM events e
+            JOIN users u ON e.user_id = u.id
+            JOIN group_members gm ON e.user_id = gm.user_id
+            WHERE gm.group_id = %s 
+            AND (e.group_id IS NULL OR e.google_event_id IS NOT NULL)
+            ORDER BY e.start ASC
+        """, (group_id,))
+        
+        events = cursor.fetchall()
+        return events
     finally:
         cursor.close()
         db.close()
@@ -558,9 +595,9 @@ def create_event(event: EventIn):
 
         for uid in set(user_ids):
             cursor.execute("""
-                INSERT INTO events (title, start, end_time, location, color, user_id) 
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (event.title, event.start, event.end_time, event.location, event.color, uid))
+                INSERT INTO events (title, start, end_time, location, color, user_id, group_id) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (event.title, event.start, event.end_time, event.location, event.color, uid, event.group_id))
         db.commit()
 
         cursor.execute("SELECT * FROM events WHERE user_id = %s ORDER BY id DESC LIMIT 1", (event.user_id,))

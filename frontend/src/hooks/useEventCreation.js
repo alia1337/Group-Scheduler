@@ -2,7 +2,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { useApi } from "./useApi";
 
-export const useEventCreation = (addEvent) => {
+export const useEventCreation = (addEvent, groupId = null) => {
   const [showPopup, setShowPopup] = useState(false);
   const [newEvent, setNewEvent] = useState({
     title: "",
@@ -76,6 +76,7 @@ export const useEventCreation = (addEvent) => {
         location: newEvent.location || null,
         color: newEvent.color,
         user_id: user.id,
+        group_id: null, // Always create as personal events, even in group context
         friend_emails: newEvent.friend_emails.split(",").map((email) => email.trim()).filter(email => email),
       };
 

@@ -113,6 +113,25 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const fetchGroupEvents = async (groupId) => {
+    const token = localStorage.getItem("token");
+    if (!token) return [];
+
+    try {
+      const res = await fetch(`${API_URL}/groups/${groupId}/events`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error("Failed to fetch group events", err);
+      return [];
+    }
+  };
+
   const value = {
     groups,
     setGroups,
@@ -126,6 +145,7 @@ export const AppProvider = ({ children }) => {
     addEvent,
     refreshGroups,
     refreshEvents,
+    fetchGroupEvents,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

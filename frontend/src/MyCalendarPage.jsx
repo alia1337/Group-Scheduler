@@ -1,115 +1,77 @@
-import React, { useState } from "react";
+import React from "react";
 import "./google-style-agenda.css";
 import { useLocation } from "react-router-dom";
 import { useApp } from "./contexts/AppContext";
 import { useAuth } from "./hooks/useAuth";
-import { useEventCreation } from "./hooks/useEventCreation";
-import { useEventFiltering } from "./hooks/useEventFiltering";
-import CalendarView from "./components/CalendarView";
-import EventsList from "./components/EventsList";
-import EventModal from "./components/EventModal";
-import SelectedDayView from "./components/SelectedDayView";
-import GoogleCalendarButton from "./components/GoogleCalendarButton";
-import ViewFilterButtons from "./components/ViewFilterButtons";
+import { useCalendarPage } from "./hooks/useCalendarPage";
+import CalendarLayout from "./components/CalendarLayout";
 
 const MyCalendarPage = () => {
   const { events, groups, visibleGroups, showMyEvents, addEvent, refreshEvents } = useApp();
   const location = useLocation();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDayForView, setSelectedDayForView] = useState(null);
-  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
-  const [viewFilter, setViewFilter] = useState('today');
-  const [hasCheckedTodayEvents, setHasCheckedTodayEvents] = useState(false);
 
   // Use custom hooks
   const { username } = useAuth();
-  const { 
-    showPopup, 
-    setShowPopup, 
-    newEvent, 
-    setNewEvent, 
-    handleCreateEvent, 
-    handleSubmit 
-  } = useEventCreation(addEvent);
 
   // Get group ID from URL for filtering
   const urlParams = new URLSearchParams(location.search);
-  const selectedGroupId = urlParams.get('group');
+  const selectedGroupId = urlParams.get('group') ? parseInt(urlParams.get('group'), 10) : null;
 
-  // Use event filtering hook
-  const { calendarEvents, getGroupedEvents, checkTodayEvents } = useEventFiltering(events, {
+  // Use shared calendar page logic with specific filtering for group/all events
+  const {
+    currentDate,
+    setCurrentDate,
+    selectedDayForView,
+    setSelectedDayForView,
+    selectedCalendarDay,
+    setSelectedCalendarDay,
+    viewFilter,
+    setViewFilter,
+    showPopup,
+    setShowPopup,
+    newEvent,
+    setNewEvent,
+    handleCreateEvent,
+    handleSubmit,
+    calendarEvents,
+    groupedEvents,
+    groupEventsLoading,
+    isGroupView
+  } = useCalendarPage(events, addEvent, {
     showMyEvents,
     visibleGroups,
     selectedGroupId,
     filterType: selectedGroupId ? 'group' : 'all'
   });
 
-  // Get grouped events for current view
-  const groupedEvents = getGroupedEvents(viewFilter);
-
-  // Check for today's events and default to upcoming if none (only on initial load)
-  React.useEffect(() => {
-    if (!hasCheckedTodayEvents && viewFilter === 'today') {
-      checkTodayEvents(viewFilter, setViewFilter);
-      setHasCheckedTodayEvents(true);
-    }
-  }, [events, hasCheckedTodayEvents, viewFilter, checkTodayEvents]);
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <CalendarView 
-        currentDate={currentDate}
-        setCurrentDate={setCurrentDate}
-        selectedCalendarDay={selectedCalendarDay}
-        setSelectedCalendarDay={setSelectedCalendarDay}
-        selectedDayForView={selectedDayForView}
-        setSelectedDayForView={setSelectedDayForView}
-        calendarEvents={calendarEvents}
-        onAddEvent={handleCreateEvent}
-      />
-
-      <div className="md:col-span-2 bg-white shadow rounded-lg p-4">
-        <div className="flex justify-between mb-4">
-          <button
-            onClick={handleCreateEvent}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
-          >
-            <span className="text-base">+</span>
-            Create Event
-          </button>
-          
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            {/* View Filter Buttons */}
-            <ViewFilterButtons viewFilter={viewFilter} setViewFilter={setViewFilter} />
-            
-            {/* Google Calendar Connection */}
-            <GoogleCalendarButton refreshEvents={refreshEvents} />
-          </div>
-        </div>
-
-        <SelectedDayView 
-          selectedDayForView={selectedDayForView}
-          setSelectedDayForView={setSelectedDayForView}
-          setSelectedCalendarDay={setSelectedCalendarDay}
-          calendarEvents={calendarEvents}
-          onAddEvent={handleCreateEvent}
-        />
-
-        <EventsList 
-          viewFilter={viewFilter}
-          groupedEvents={groupedEvents}
-          onCreateEvent={handleCreateEvent}
-        />
-      </div>
-
-      <EventModal 
-        showPopup={showPopup}
-        setShowPopup={setShowPopup}
-        newEvent={newEvent}
-        setNewEvent={setNewEvent}
-        onSubmit={handleSubmit}
-      />
-    </div>
+    <CalendarLayout
+      currentDate={currentDate}
+      setCurrentDate={setCurrentDate}
+      selectedCalendarDay={selectedCalendarDay}
+      setSelectedCalendarDay={setSelectedCalendarDay}
+      selectedDayForView={selectedDayForView}
+      setSelectedDayForView={setSelectedDayForView}
+      calendarEvents={calendarEvents}
+      groupedEvents={groupedEvents}
+      viewFilter={viewFilter}
+      setViewFilter={setViewFilter}
+      onCreateEvent={handleCreateEvent}
+      refreshEvents={refreshEvents}
+      showPopup={showPopup}
+      setShowPopup={setShowPopup}
+      newEvent={newEvent}
+      setNewEvent={setNewEvent}
+      onSubmit={handleSubmit}
+      showSettings={false}
+      isGoogleConnected={false}
+      showLegend={isGroupView}
+      legendOptions={{
+        showGoogleEvents: true,
+        showGroupEvents: true,
+        showPersonalEvents: true
+      }}
+    />
   );
 };
 

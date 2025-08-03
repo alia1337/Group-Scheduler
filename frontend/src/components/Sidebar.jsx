@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../contexts/AppContext";
+import GroupJoinKey from "./GroupJoinKey";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -643,6 +644,14 @@ const Sidebar = () => {
                   <strong>Note:</strong> Only group admins can manage members. Contact an admin if you need to make changes.
                 </p>
               </div>
+            )}
+
+            {/* Show join key for admins and creators */}
+            {Boolean(userIsAdmin) && (
+              <GroupJoinKey 
+                joinKey={groups.find(g => g.group_id === selectedGroupId)?.join_key || ""}
+                groupName={groups.find(g => g.group_id === selectedGroupId)?.group_name || "Unknown Group"}
+              />
             )}
 
             <div className="mt-6 flex justify-between">
