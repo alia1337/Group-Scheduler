@@ -36,7 +36,6 @@ export const useApi = () => {
 
       return await response.json();
     } catch (error) {
-      console.error(`API call failed for ${endpoint}:`, error);
       throw error;
     }
   };

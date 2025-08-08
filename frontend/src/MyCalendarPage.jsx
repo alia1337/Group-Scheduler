@@ -41,7 +41,7 @@ const MyCalendarPage = () => {
         setGroupMembers(members);
       }
     } catch (error) {
-      console.error("Failed to fetch group members:", error);
+      // Handle error silently
     }
   };
 

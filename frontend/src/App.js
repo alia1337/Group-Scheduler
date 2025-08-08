@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import HomePage from "./HomePage";
 import MyCalendarPage from "./MyCalendarPage";
 import PersonalCalendarPage from "./PersonalCalendarPage";
-import MyScheduleView from "./MyScheduleView";
 import "./App.css";
 import NewGroupPage from "./NewGroupPage";
 import LoginForm from "./LoginForm";
@@ -57,7 +56,7 @@ function App() {
           element={
             <ProtectedRoute>
               <Layout>
-                <MyScheduleView />
+                <PersonalCalendarPage />
               </Layout>
             </ProtectedRoute>
           } 

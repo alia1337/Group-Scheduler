@@ -8,32 +8,9 @@ const EventsList = ({
   onCreateEvent,
   isGroupView = false
 }) => {
-  // Helper function to render user label for group events
-  const renderUserLabel = (event) => {
-    if (!isGroupView || !event.creator_username) return null;
-    
-    return (
-      <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md">
-        {event.creator_username}
-      </span>
-    );
-  };
-
-  // Helper function to render event tags (Google, user label)
-  const renderEventTags = (event) => (
-    <div className="flex items-center gap-1 mt-1">
-      {event.google_event_id && (
-        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-          Google
-        </span>
-      )}
-      {renderUserLabel(event)}
-    </div>
-  );
 
   return (
     <>
-      {/* Events List Header */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
           {viewFilter === 'today' && (isGroupView ? 'Today\'s Group Events' : 'Today\'s Events')}
@@ -63,7 +40,6 @@ const EventsList = ({
           </button>
         </div>
       ) : (
-        // Both today and upcoming views - group by day
         Object.entries(groupedEvents)
           .sort(([a], [b]) => new Date(a) - new Date(b))
           .map(([day, evts]) => {
@@ -109,7 +85,18 @@ const EventsList = ({
                                 {formatTimeRange(event.start, event.end_time)}
                               </span>
                             </div>
-                            {renderEventTags(event)}
+                            <div className="flex items-center gap-1 mt-1">
+                              {event.google_event_id && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  Google
+                                </span>
+                              )}
+                              {isGroupView && event.creator_username && (
+                                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md">
+                                  {event.creator_username}
+                                </span>
+                              )}
+                            </div>
                             {event.location && (
                               <div className="text-sm text-gray-500 mt-2">
                                 📍 {event.location}
@@ -135,7 +122,18 @@ const EventsList = ({
                                 </div>
                               )}
                             </div>
-                            {renderEventTags(event)}
+                            <div className="flex items-center gap-1 mt-1">
+                              {event.google_event_id && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  Google
+                                </span>
+                              )}
+                              {isGroupView && event.creator_username && (
+                                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md">
+                                  {event.creator_username}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </>
                       )}

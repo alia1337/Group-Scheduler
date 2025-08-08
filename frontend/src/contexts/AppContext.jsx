@@ -21,22 +21,18 @@ export const AppProvider = ({ children }) => {
   // Fetch groups and events when the app loads
   useEffect(() => {
     const token = localStorage.getItem("token");
-    console.log("AppContext useEffect - token:", token ? "exists" : "not found");
     if (!token) return;
 
     // Fetch groups
-    console.log("Fetching groups from API...");
     fetch(`${API_URL}/groups`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
       .then((data) => {
-        console.log("Groups API response:", data);
         setGroups(Array.isArray(data) ? data : []);
         setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
       })
       .catch((err) => {
-        console.error("Failed to fetch groups", err);
         setGroups([]);
         setVisibleGroups([]);
       });
@@ -55,12 +51,10 @@ export const AppProvider = ({ children }) => {
         if (Array.isArray(data)) {
           setEvents(data);
         } else {
-          console.error("Events API returned non-array data:", data);
           setEvents([]);
         }
       })
       .catch((err) => {
-        console.error("Failed to fetch events", err);
         setEvents([]);
       });
   }, []);
@@ -89,7 +83,7 @@ export const AppProvider = ({ children }) => {
       setGroups(Array.isArray(data) ? data : []);
       setVisibleGroups(Array.isArray(data) ? data.map((g) => g.group_id) : []);
     } catch (err) {
-      console.error("Failed to refresh groups", err);
+      // Handle error silently
     }
   };
 
@@ -109,7 +103,7 @@ export const AppProvider = ({ children }) => {
         setEvents(data);
       }
     } catch (err) {
-      console.error("Failed to refresh events", err);
+      // Handle error silently
     }
   };
 
@@ -127,7 +121,6 @@ export const AppProvider = ({ children }) => {
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (err) {
-      console.error("Failed to fetch group events", err);
       return [];
     }
   };

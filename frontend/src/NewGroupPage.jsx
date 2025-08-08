@@ -53,7 +53,6 @@ const NewGroupPage = () => {
     };
 
     try {
-      console.log("Creating group with payload:", payload);
       const res = await fetch(`${API_URL}/groups`, {
         method: "POST",
         headers: {
@@ -64,7 +63,6 @@ const NewGroupPage = () => {
       });
 
       const data = await res.json();
-      console.log("Response:", res.status, data);
       
       if (res.ok) {
         setMessage("✅ Group created successfully!");
@@ -81,7 +79,6 @@ const NewGroupPage = () => {
         );
       }
     } catch (err) {
-      console.error("Error creating group:", err);
       setError("Something went wrong: " + err.message);
     }
   };

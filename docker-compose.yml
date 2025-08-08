@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # MySQL Database
@@ -14,7 +13,7 @@ services:
       - "3307:3306"  # Use 3307 to avoid conflicts with local MySQL
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s

@@ -6,41 +6,30 @@ import SelectedDayView from "./SelectedDayView";
 import CalendarHeader from "./CalendarHeader";
 
 const CalendarLayout = ({
-  // Calendar state
   currentDate,
   setCurrentDate,
-  selectedCalendarDay,
-  setSelectedCalendarDay,
-  selectedDayForView,
-  setSelectedDayForView,
-  
-  // Event data
+  selectedDay,
+  setSelectedDay,
+  viewDay,
+  setViewDay,
   calendarEvents,
   groupedEvents,
   viewFilter,
   setViewFilter,
-  
-  // Event handlers
   onCreateEvent,
   refreshEvents,
-  
-  // Event modal
   showPopup,
   setShowPopup,
   newEvent,
   setNewEvent,
   onSubmit,
-  
-  // Calendar specific props
   showSettings = false,
   isGoogleConnected = false,
-  createButtonText = "Create Event",
+  buttonText = "Create Event",
   showLegend = false,
   legendOptions = {},
   isGroupView = false,
-  onFindFreeTime = null,
-  
-  // Layout wrapper (for PersonalCalendar vs MyCalendar difference)
+  onFindTime = null,
   children
 }) => {
   const content = (
@@ -48,10 +37,10 @@ const CalendarLayout = ({
       <CalendarView 
         currentDate={currentDate}
         setCurrentDate={setCurrentDate}
-        selectedCalendarDay={selectedCalendarDay}
-        setSelectedCalendarDay={setSelectedCalendarDay}
-        selectedDayForView={selectedDayForView}
-        setSelectedDayForView={setSelectedDayForView}
+        selectedDay={selectedDay}
+        setSelectedDay={setSelectedDay}
+        viewDay={viewDay}
+        setViewDay={setViewDay}
         calendarEvents={calendarEvents}
         onAddEvent={onCreateEvent}
         showSettings={showSettings}
@@ -66,15 +55,15 @@ const CalendarLayout = ({
           viewFilter={viewFilter}
           setViewFilter={setViewFilter}
           refreshEvents={refreshEvents}
-          createButtonText={createButtonText}
+          buttonText={buttonText}
           isGroupView={isGroupView}
-          onFindFreeTime={onFindFreeTime}
+          onFindTime={onFindTime}
         />
 
         <SelectedDayView 
-          selectedDayForView={selectedDayForView}
-          setSelectedDayForView={setSelectedDayForView}
-          setSelectedCalendarDay={setSelectedCalendarDay}
+          viewDay={viewDay}
+          setViewDay={setViewDay}
+          setSelectedDay={setSelectedDay}
           calendarEvents={calendarEvents}
           onAddEvent={onCreateEvent}
         />
@@ -97,7 +86,6 @@ const CalendarLayout = ({
     </div>
   );
 
-  // If children are provided, wrap the content (for PersonalCalendar's <> wrapper)
   return children ? children(content) : content;
 };
 

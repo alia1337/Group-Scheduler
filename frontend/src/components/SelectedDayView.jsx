@@ -13,7 +13,6 @@ const SelectedDayView = ({
 
   const dayKey = format(selectedDayForView, "yyyy-MM-dd");
   const dayEvents = calendarEvents[dayKey] || [];
-  console.log(`🗓️ Selected Day View - ${dayKey}: Found ${dayEvents.length} events`);
 
   const handleClose = () => {
     setSelectedDayForView(null);

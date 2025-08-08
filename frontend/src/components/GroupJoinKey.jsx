@@ -9,7 +9,7 @@ const GroupJoinKey = ({ joinKey, groupName }) => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy: ', err);
+      // Fallback for older browsers
     }
   };
 

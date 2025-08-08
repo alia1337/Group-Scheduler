@@ -18,7 +18,6 @@ export const useGroupEvents = (selectedGroupId) => {
         const events = await fetchGroupEvents(selectedGroupId);
         setGroupEvents(events);
       } catch (error) {
-        console.error("Failed to load group events:", error);
         setGroupEvents([]);
       } finally {
         setLoading(false);
@@ -38,7 +37,7 @@ export const useGroupEvents = (selectedGroupId) => {
       const events = await fetchGroupEvents(selectedGroupId);
       setGroupEvents(events);
     } catch (error) {
-      console.error("Failed to refresh group events:", error);
+      // Handle error silently
     } finally {
       setLoading(false);
     }

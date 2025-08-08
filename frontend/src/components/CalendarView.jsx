@@ -7,10 +7,10 @@ import EventLegend from "./EventLegend";
 const CalendarView = ({ 
   currentDate, 
   setCurrentDate, 
-  selectedCalendarDay, 
-  setSelectedCalendarDay,
-  selectedDayForView,
-  setSelectedDayForView,
+  selectedDay, 
+  setSelectedDay,
+  viewDay,
+  setViewDay,
   calendarEvents,
   onAddEvent,
   showSettings = false,
@@ -18,58 +18,51 @@ const CalendarView = ({
   showLegend = false,
   legendOptions = {}
 }) => {
-  const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
-  const monthYearPickerRef = useRef(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef(null);
 
-  // Close month/year picker when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (monthYearPickerRef.current && !monthYearPickerRef.current.contains(event.target)) {
-        setShowMonthYearPicker(false);
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+        setShowPicker(false);
       }
     };
 
-    if (showMonthYearPicker) {
+    if (showPicker) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showMonthYearPicker]);
+  }, [showPicker]);
 
   const handlePrevMonth = () => {
     const newDate = subMonths(currentDate, 1);
-    console.log("Previous month:", format(newDate, "MMMM yyyy"));
     setCurrentDate(newDate);
   };
 
   const handleNextMonth = () => {
     const newDate = addMonths(currentDate, 1);
-    console.log("Next month:", format(newDate, "MMMM yyyy"));
     setCurrentDate(newDate);
   };
 
-  const handleMonthYearSelect = (month, year) => {
+  const handleSelect = (month, year) => {
     const newDate = new Date(year, month, 1);
     setCurrentDate(newDate);
-    setShowMonthYearPicker(false);
+    setShowPicker(false);
   };
 
-  const toggleMonthYearPicker = () => {
-    setShowMonthYearPicker(!showMonthYearPicker);
+  const togglePicker = () => {
+    setShowPicker(!showPicker);
   };
 
   const handleCalendarChange = (date) => {
-    console.log("Calendar change:", format(date, "yyyy-MM-dd"));
-    console.log("Current calendar month:", format(currentDate, "yyyy-MM"));
-    
-    // Toggle selection - if same day is clicked, deselect it
-    if (selectedCalendarDay && isSameDay(selectedCalendarDay, date)) {
-      setSelectedDayForView(null);
-      setSelectedCalendarDay(null);
+    if (selectedDay && isSameDay(selectedDay, date)) {
+      setViewDay(null);
+      setSelectedDay(null);
     } else {
-      setSelectedDayForView(date);
-      setSelectedCalendarDay(date);
+      setViewDay(date);
+      setSelectedDay(date);
     }
   };
 
@@ -85,7 +78,7 @@ const CalendarView = ({
           </button>
           
           <button 
-            onClick={toggleMonthYearPicker}
+            onClick={togglePicker}
             className="text-lg font-semibold text-gray-800 hover:bg-gray-100 px-3 py-1 rounded cursor-pointer flex-1 text-center whitespace-nowrap overflow-hidden"
           >
             {format(currentDate, "MMMM yyyy")}
@@ -99,34 +92,32 @@ const CalendarView = ({
           </button>
         </div>
 
-        {/* Month/Year Picker Modal */}
-        {showMonthYearPicker && (
+        {showPicker && (
           <div 
-            ref={monthYearPickerRef}
+            ref={pickerRef}
             className="absolute top-12 left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-xl z-20 p-4 mx-4"
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-gray-800">Select Month & Year</h3>
               <button 
-                onClick={() => setShowMonthYearPicker(false)}
+                onClick={() => setShowPicker(false)}
                 className="px-2 py-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
               >
                 ×
               </button>
             </div>
             
-            {/* Year Selection */}
             <div className="mb-4">
               <div className="flex justify-between items-center mb-2">
                 <button 
-                  onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() - 1)}
+                  onClick={() => handleSelect(currentDate.getMonth(), currentDate.getFullYear() - 1)}
                   className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded"
                 >
                   ← {currentDate.getFullYear() - 1}
                 </button>
                 <span className="font-semibold text-gray-800">{currentDate.getFullYear()}</span>
                 <button 
-                  onClick={() => handleMonthYearSelect(currentDate.getMonth(), currentDate.getFullYear() + 1)}
+                  onClick={() => handleSelect(currentDate.getMonth(), currentDate.getFullYear() + 1)}
                   className="px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded"
                 >
                   {currentDate.getFullYear() + 1} →
@@ -134,7 +125,6 @@ const CalendarView = ({
               </div>
             </div>
 
-            {/* Month Grid */}
             <div className="grid grid-cols-3 gap-2">
               {[
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -142,7 +132,7 @@ const CalendarView = ({
               ].map((monthName, index) => (
                 <button
                   key={index}
-                  onClick={() => handleMonthYearSelect(index, currentDate.getFullYear())}
+                  onClick={() => handleSelect(index, currentDate.getFullYear())}
                   className={`px-3 py-2 text-sm font-medium rounded ${
                     currentDate.getMonth() === index 
                       ? 'bg-blue-600 text-white font-semibold' 
@@ -154,13 +144,12 @@ const CalendarView = ({
               ))}
             </div>
 
-            {/* Quick Year Navigation */}
             <div className="mt-4 pt-3 border-t border-gray-200">
               <div className="flex justify-center gap-2 flex-wrap">
                 {[2023, 2024, 2025, 2026, 2027].map(year => (
                   <button
                     key={year}
-                    onClick={() => handleMonthYearSelect(currentDate.getMonth(), year)}
+                    onClick={() => handleSelect(currentDate.getMonth(), year)}
                     className={`px-3 py-2 text-sm font-medium rounded ${
                       currentDate.getFullYear() === year
                         ? 'bg-blue-600 text-white'
@@ -176,11 +165,10 @@ const CalendarView = ({
         )}
       </div>
 
-      {/* Calendar using react-calendar */}
       <div className="react-calendar-wrapper" style={{ width: '100%' }}>
         <Calendar
           onChange={handleCalendarChange}
-          value={selectedCalendarDay}
+          value={selectedDay}
           activeStartDate={currentDate}
           onActiveStartDateChange={({ activeStartDate }) => setCurrentDate(activeStartDate)}
           tileContent={({ date }) => {
@@ -216,7 +204,6 @@ const CalendarView = ({
         />
       </div>
       
-      {/* Calendar Settings (only shown for Personal Calendar) */}
       {showSettings && (
         <div className="mt-4 pt-4 border-t border-gray-200">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Calendar Settings</h3>
@@ -233,7 +220,6 @@ const CalendarView = ({
         </div>
       )}
 
-      {/* Event Legend (optional) */}
       {showLegend && <EventLegend {...legendOptions} />}
     </div>
   );

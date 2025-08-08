@@ -132,7 +132,6 @@ export const useEventFiltering = (events, options = {}) => {
     
     const optimalFilter = getOptimalViewFilter();
     if (optimalFilter !== viewFilter) {
-      console.log(`Switching from ${viewFilter} to ${optimalFilter} view`);
       setViewFilter(optimalFilter);
     }
   };

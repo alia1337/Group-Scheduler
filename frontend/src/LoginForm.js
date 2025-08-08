@@ -46,7 +46,6 @@ function LoginForm() {
         setMessage(data.detail || "Login failed. Please check your credentials.");
       }
     } catch (error) {
-      console.error("Login error:", error);
       setMessage("An error occurred. Please try again.");
     }
   };

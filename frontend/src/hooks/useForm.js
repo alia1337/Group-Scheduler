@@ -69,7 +69,7 @@ export const useForm = (initialValues = {}, validationRules = {}) => {
       try {
         await onSubmit(values);
       } catch (error) {
-        console.error("Form submission error:", error);
+        // Handle error silently
       }
     }
     

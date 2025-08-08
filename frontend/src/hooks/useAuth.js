@@ -30,7 +30,6 @@ export const useAuth = () => {
   const checkAuthAndRedirect = () => {
     const token = localStorage.getItem("token");
     if (!token) {
-      console.error("No token found");
       alert("No authentication token found. Please log in again.");
       logout();
       return false;

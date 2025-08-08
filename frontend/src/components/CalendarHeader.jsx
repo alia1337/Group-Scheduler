@@ -7,9 +7,9 @@ const CalendarHeader = ({
   viewFilter, 
   setViewFilter, 
   refreshEvents,
-  createButtonText = "Create Event",
+  buttonText = "Create Event",
   isGroupView = false,
-  onFindFreeTime = null
+  onFindTime = null
 }) => {
   return (
     <div className="flex justify-between mb-4">
@@ -19,13 +19,12 @@ const CalendarHeader = ({
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
         >
           <span className="text-base">+</span>
-          {createButtonText}
+          {buttonText}
         </button>
         
-        {/* Find Free Time button - only show for group views */}
-        {isGroupView && onFindFreeTime && (
+        {isGroupView && onFindTime && (
           <button
-            onClick={onFindFreeTime}
+            onClick={onFindTime}
             className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
           >
             <span className="text-base">🔍</span>
@@ -35,10 +34,8 @@ const CalendarHeader = ({
       </div>
       
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-        {/* View Filter Buttons */}
         <ViewFilterButtons viewFilter={viewFilter} setViewFilter={setViewFilter} />
         
-        {/* Google Calendar Connection */}
         <GoogleCalendarButton refreshEvents={refreshEvents} />
       </div>
     </div>

@@ -574,7 +574,6 @@ def get_events(user_id: int = Depends(get_current_user)):
         # Get all events for the user - let frontend handle date filtering to avoid timezone issues
         cursor.execute("SELECT * FROM events WHERE user_id = %s", (user_id,))
         events = cursor.fetchall()
-        print(f"Backend: Found {len(events)} events for user {user_id}")
         return events
     finally:
         cursor.close()
@@ -608,9 +607,7 @@ def create_event(event: EventIn):
 
 @app.get("/auth/google/login")
 def google_login(user_id: int = Depends(get_current_user)):
-    print(f"Google OAuth login request for user_id: {user_id}")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
-        print("ERROR: Google OAuth not configured")
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
     flow = Flow.from_client_config(
@@ -637,18 +634,14 @@ def google_login(user_id: int = Depends(get_current_user)):
             state=str(user_id),
             prompt='select_account'
         )
-        print(f"Generated auth URL for user {user_id}: {authorization_url[:100]}...")
         return {"auth_url": authorization_url}
     except Exception as e:
-        print(f"ERROR generating auth URL: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate auth URL: {str(e)}")
 
 @app.get("/auth/google/callback")
 def google_callback(code: str, state: str):
-    print(f"Google OAuth callback received - code: {code[:20] if code else 'None'}..., state: {state}")
     try:
         user_id = int(state)
-        print(f"Processing callback for user_id: {user_id}")
         
         flow = Flow.from_client_config(
             {
@@ -686,20 +679,17 @@ def google_callback(code: str, state: str):
             cursor.close()
             db.close()
         
-        print(f"Successfully stored Google OAuth tokens for user {user_id}")
         
         # Trigger Google Calendar sync after successful connection
         try:
             sync_google_calendar_events(user_id)
-            print(f"Initial Google Calendar sync completed for user {user_id}")
         except Exception as sync_error:
-            print(f"Error during initial sync for user {user_id}: {sync_error}")
             # Don't fail the OAuth flow if sync fails
+            pass
         
         return RedirectResponse(url="http://localhost:3000/calendar?connected=true")
         
     except Exception as e:
-        print(f"Google OAuth callback error: {e}")
         import traceback
         traceback.print_exc()
         return RedirectResponse(url="http://localhost:3000/calendar?error=auth_failed")
@@ -713,7 +703,6 @@ def sync_google_calendar_events(user_id: int):
         user = cursor.fetchone()
         
         if not user or not user.get('google_access_token'):
-            print(f"No Google Calendar access token for user {user_id}")
             return
         
         from google.oauth2.credentials import Credentials
@@ -733,7 +722,6 @@ def sync_google_calendar_events(user_id: int):
         start_of_year = datetime(current_year, 1, 1).isoformat() + 'Z'
         end_of_next_year = datetime(current_year + 1, 12, 31, 23, 59, 59).isoformat() + 'Z'
         
-        print(f"Syncing Google Calendar events for user {user_id} from {start_of_year} to {end_of_next_year}")
         
         events_result = service.events().list(
             calendarId='primary',
@@ -760,7 +748,6 @@ def sync_google_calendar_events(user_id: int):
             existing_event = cursor.fetchone()
             
             if existing_event:
-                print(f"Skipping existing Google event: {event_title}")
                 skipped_count += 1
                 continue
             
@@ -786,17 +773,13 @@ def sync_google_calendar_events(user_id: int):
                 """, (event_title, start_dt, end_dt, location, '#4285f4', user_id, google_event_id))
                 
                 synced_count += 1
-                print(f"Synced Google event: {event_title} on {start}")
                 
             except Exception as parse_error:
-                print(f"Error parsing event {event_title}: {parse_error}")
                 continue
         
         db.commit()
-        print(f"Google Calendar sync completed for user {user_id}: {synced_count} new events, {skipped_count} skipped")
         
     except Exception as e:
-        print(f"Error syncing Google Calendar events for user {user_id}: {e}")
         db.rollback()
     finally:
         cursor.close()
@@ -809,7 +792,6 @@ def sync_google_calendar(user_id: int = Depends(get_current_user)):
         sync_google_calendar_events(user_id)
         return {"message": "Google Calendar sync completed successfully"}
     except Exception as e:
-        print(f"Error in manual sync: {e}")
         raise HTTPException(status_code=500, detail="Failed to sync Google Calendar")
 
 @app.get("/auth/google/events")
@@ -839,11 +821,9 @@ def get_google_calendar_events(user_id: int = Depends(get_current_user)):
                 'source': 'google'
             })
         
-        print(f"Returning {len(formatted_events)} Google Calendar events from database for user {user_id}")
         return formatted_events
         
     except Exception as e:
-        print(f"Error fetching Google Calendar events from database: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch Google Calendar events")
     finally:
         cursor.close()
@@ -868,7 +848,6 @@ def disconnect_google_calendar(user_id: int = Depends(get_current_user)):
         """, (user_id,))
         db.commit()
         
-        print(f"Disconnected Google Calendar for user {user_id}, removed {deleted_events} Google events")
         return {"message": f"Google Calendar disconnected successfully. Removed {deleted_events} Google events."}
     finally:
         cursor.close()
@@ -937,7 +916,6 @@ def calculate_group_availability(
                 date_str = check_date.strftime('%Y-%m-%d')
                 
                 if request.min_continuous_hours:
-                    # For continuous time blocks, we need more complex logic
                     available_count = calculate_continuous_availability(
                         cursor, group_members, date_str, 
                         request.start_time, request.end_time, 
@@ -984,7 +962,6 @@ def calculate_continuous_availability(cursor, group_members, date_str, start_tim
     """Calculate availability for continuous time blocks"""
     from datetime import datetime, timedelta
     
-    # Convert times to datetime objects for easier manipulation
     start_dt = datetime.strptime(start_time, '%H:%M').time()
     end_dt = datetime.strptime(end_time, '%H:%M').time()
     

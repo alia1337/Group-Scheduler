@@ -9,20 +9,19 @@ const Sidebar = () => {
   const { groups, visibleGroups, toggleGroupVisibility, refreshGroups, setVisibleGroups } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
-  const [showGroupActionsMenu, setShowGroupActionsMenu] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [joinKey, setJoinKey] = useState("");
   const [joinMessage, setJoinMessage] = useState("");
   const [createGroupName, setCreateGroupName] = useState("");
-  const [showCreateSuccess, setShowCreateSuccess] = useState(false);
-  const [createdGroupJoinKey, setCreatedGroupJoinKey] = useState("");
-  const [createdGroupName, setCreatedGroupName] = useState("");
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [newJoinKey, setNewJoinKey] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
   const [userIsAdmin, setUserIsAdmin] = useState(false);
   const [userIsCreator, setUserIsCreator] = useState(false);
   const [editingGroupName, setEditingGroupName] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
 
   const handleCreateGroup = async () => {
     const token = localStorage.getItem("token");
@@ -37,21 +36,18 @@ const Sidebar = () => {
         },
         body: JSON.stringify({ 
           name: createGroupName.trim(),
-          member_emails: [] // Backend requires this field even though we're only inputting a name
+          member_emails: []
         }),
       });
 
       const data = await res.json();
-      console.log("Create group API response:", data);
       if (res.ok) {
-        setCreatedGroupJoinKey(data.join_key);
-        setCreatedGroupName(createGroupName);
-        setShowCreateSuccess(true);
+        setNewJoinKey(data.join_key);
+        setNewGroupName(createGroupName);
+        setShowSuccess(true);
         setCreateGroupName("");
-        // Refresh groups list
         refreshGroups();
       } else {
-        // Handle different error formats
         let errorMessage = "Failed to create group";
         if (data.detail) {
           if (typeof data.detail === 'string') {
@@ -87,7 +83,6 @@ const Sidebar = () => {
       if (res.ok) {
         setJoinMessage(`✅ ${data.message}`);
         setJoinKey("");
-        // Refresh groups list
         refreshGroups();
       } else {
         setJoinMessage(`❌ ${data.detail || "Failed to join group"}`);
@@ -120,7 +115,6 @@ const Sidebar = () => {
         alert("Failed to fetch group members");
       }
     } catch (error) {
-      console.error("Error fetching group members:", error);
       alert("Error fetching group members");
     }
   };
@@ -152,7 +146,6 @@ const Sidebar = () => {
         alert(data.detail || "Action failed");
       }
     } catch (error) {
-      console.error("Error performing admin action:", error);
       alert("Error performing action");
     }
   };
@@ -175,13 +168,11 @@ const Sidebar = () => {
       if (res.ok) {
         alert("Group name updated successfully!");
         setEditingGroupName(false);
-        setNewGroupName("");
         refreshGroups();
       } else {
         alert(data.detail || "Failed to update group name");
       }
     } catch (error) {
-      console.error("Error updating group name:", error);
       alert("Error updating group name");
     }
   };
@@ -211,16 +202,13 @@ const Sidebar = () => {
         alert(errorData.detail || "Failed to delete group");
       }
     } catch (error) {
-      console.error("Error deleting group:", error);
       alert("Error deleting group");
     }
   };
 
   return (
     <>
-      {/* Navigation Sidebar */}
       <div className="w-60 bg-white shadow-lg rounded-lg p-3 h-fit">
-        {/* Personal Calendar Navigation */}
         <Link 
           to="/personal-calendar"
           className={`group relative block mb-2 p-3 rounded-lg cursor-pointer transition-all duration-150 font-medium text-sm ${
@@ -242,7 +230,6 @@ const Sidebar = () => {
           <div className="flex items-center justify-between">
             <span className="truncate">Personal Calendar</span>
           </div>
-          {/* Left indicator */}
           <div className={`absolute -left-3 top-1/2 transform -translate-y-1/2 w-1 bg-blue-500 rounded-r transition-all duration-150 ${
             location.pathname === '/personal-calendar' ? 'h-10' : 'h-0 group-hover:h-5'
           }`} />
@@ -251,7 +238,6 @@ const Sidebar = () => {
         {/* Separator */}
         <div className="h-0.5 bg-gray-200 mx-2 mb-3 rounded" />
 
-        {/* Group Calendar Navigation */}
         <Link 
           to="/calendar"
           className={`group relative block mb-2 p-3 rounded-lg cursor-pointer transition-all duration-150 font-medium text-sm ${
@@ -273,7 +259,6 @@ const Sidebar = () => {
           <div className="flex items-center justify-between">
             <span className="truncate">Group Calendar</span>
           </div>
-          {/* Left indicator */}
           <div className={`absolute -left-3 top-1/2 transform -translate-y-1/2 w-1 bg-blue-500 rounded-r transition-all duration-150 ${
             location.pathname === '/calendar' && !location.search.includes('group=') ? 'h-10' : 'h-0 group-hover:h-5'
           }`} />
@@ -351,8 +336,7 @@ const Sidebar = () => {
                     )}
                   </div>
                   
-                  {/* Left indicator */}
-                  <div 
+                          <div 
                     className={`absolute -left-3 top-1/2 transform -translate-y-1/2 w-1 bg-blue-500 rounded-r transition-all duration-150 ${
                       isCurrentGroup ? 'h-10' : 'h-0 group-hover:h-5'
                     }`}
@@ -366,11 +350,10 @@ const Sidebar = () => {
         {/* Separator */}
         <div className="h-0.5 bg-gray-200 mx-2 my-3 rounded" />
 
-        {/* Add Group Button */}
         <div className="group relative">
           <div
             className="p-3 rounded-lg cursor-pointer transition-all duration-150 font-medium text-sm border-2 border-dashed border-gray-300 text-gray-500 hover:border-green-500 hover:text-green-600 hover:bg-green-50 hover:border-solid flex items-center justify-center"
-            onClick={() => setShowGroupActionsMenu(true)}
+            onClick={() => setShowMenu(true)}
             onMouseEnter={(e) => {
               e.target.style.borderRadius = '16px';
             }}
@@ -380,26 +363,25 @@ const Sidebar = () => {
           >
             <span className="text-2xl">+</span>
           </div>
-          {/* Left indicator */}
           <div className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-1 bg-green-500 rounded-r transition-all duration-150 h-0 group-hover:h-5" />
         </div>
       </div>
 
       {/* Group Actions Menu */}
-      {showGroupActionsMenu && (
+      {showMenu && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Group Actions</h3>
               <button
                 onClick={() => {
-                  setShowGroupActionsMenu(false);
+                  setShowMenu(false);
                   setJoinKey("");
                   setJoinMessage("");
                   setCreateGroupName("");
-                  setShowCreateSuccess(false);
-                  setCreatedGroupJoinKey("");
-                  setCreatedGroupName("");
+                  setShowSuccess(false);
+                  setNewJoinKey("");
+                  setNewGroupName("");
                 }}
                 className="px-2 py-1 text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
               >
@@ -434,16 +416,16 @@ const Sidebar = () => {
               </div>
             </div>
 
-            {showCreateSuccess && createdGroupJoinKey && (
+            {showSuccess && newJoinKey && (
               <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h4 className="font-medium text-green-800 mb-2">Group "{createdGroupName}" Created Successfully!</h4>
+                <h4 className="font-medium text-green-800 mb-2">Group "{newGroupName}" Created Successfully!</h4>
                 <p className="text-sm text-green-700 mb-3">Share this join key with friends:</p>
                 <div className="bg-white border border-green-300 rounded px-3 py-2 font-mono text-center text-lg font-bold text-green-800 mb-3">
-                  {createdGroupJoinKey}
+                  {newJoinKey}
                 </div>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(createdGroupJoinKey);
+                    navigator.clipboard.writeText(newJoinKey);
                     alert("Join key copied to clipboard!");
                   }}
                   className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 text-sm font-medium rounded"
@@ -483,13 +465,13 @@ const Sidebar = () => {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
-                  setShowGroupActionsMenu(false);
+                  setShowMenu(false);
                   setJoinKey("");
                   setJoinMessage("");
                   setCreateGroupName("");
-                  setShowCreateSuccess(false);
-                  setCreatedGroupJoinKey("");
-                  setCreatedGroupName("");
+                  setShowSuccess(false);
+                  setNewJoinKey("");
+                  setNewGroupName("");
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
               >
